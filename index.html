@@ -924,15 +924,17 @@ function boom(){
       if(p.a>0){al=true;x.globalAlpha=p.a;x.fillStyle=p.c;x.save();x.translate(p.x,p.y);x.rotate(p.rot+t*.06);x.fillRect(-p.s/2,-p.s/2,p.s,p.s*.62);x.restore()}}
     if(al&&t<150)requestAnimationFrame(f);else x.clearRect(0,0,c.width,c.height)})();
 }
-function restStart(sec,label){T.left=T.total=Math.max(5,sec);T.label=label||'REST';if(T.int)clearInterval(T.int);T.int=setInterval(tickT,250);tickT(true)}
+function restStart(sec,label){T.total=Math.max(5,sec);T.end=Date.now()+T.total*1000;T.label=label||'REST';if(T.int)clearInterval(T.int);T.int=setInterval(tickT,250);tickT(true)}
 function tickT(first){
-  const p=$('#pill');if(!T.left){restStop(true);return}
+  const p=$('#pill');if(!T.end){restStop(true);return}
+  /* wall-clock based: immune to interval drift, runs at real speed */
+  T.left=Math.max(0,Math.round((T.end-Date.now())/1000));
   p.classList.add('on');p.classList.toggle('tick',!!first);
   $('#pill-time').textContent=mmss(T.left);
   $('#pill-label').textContent=T.left<=5?'GO':T.label;
   $('#pill-fg').style.strokeDashoffset=(100.5*(1-T.left/Math.max(1,T.total))).toFixed(1);
   $('.pill-ring').classList.toggle('go',T.left<=5);
-  T.left--;
+  if(T.left<=0){T.end=null;restStop()}
 }
 function restStop(done){
   if(T.int){clearInterval(T.int);T.int=null}
@@ -1441,7 +1443,7 @@ const G={
     restStart(ex.def.rest,ex.n.toUpperCase());
     rerender();
   },
-  restAdj(n){T.left=Math.max(1,T.left+n);T.total=Math.max(T.total,T.left)},
+  restAdj(n){if(!T.end)return;T.end=Math.max(Date.now()+1000,T.end+n*1000);T.total=Math.max(1,Math.round((T.end-Date.now())/1000))},
   restSkip(){restStop(false)},
   finishFlow,
   save(){
@@ -1520,7 +1522,7 @@ function applyTheme(){
 applyTheme();
 /* auto cache-bust: if a newer build is deployed, this install picks it up
    on the next open. APP_BUILD is stamped by the deploy script. */
-const APP_BUILD='2026-08-25c';
+const APP_BUILD='2026-08-25d';
 try{
   const seen=localStorage.getItem('forge_build');
   if(seen && seen!==APP_BUILD){
