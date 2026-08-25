@@ -133,8 +133,9 @@ main{flex:1;padding:18px 16px 178px}
 .setidx{font-size:11px;color:var(--dim);font-weight:700;text-align:center}
 .stepbox{background:var(--card2);border:1px solid var(--line);border-radius:11px;height:46px;display:flex;align-items:center;overflow:hidden}
 .stepbox.dirty{border-color:var(--line2)}
-.stepbtn{width:34px;height:100%;display:grid;place-items:center;color:var(--dim);font-weight:800;font-size:16px;flex:0 0 auto;user-select:none}
+.stepbtn{width:44px;height:100%;min-height:44px;display:grid;place-items:center;color:var(--dim);font-weight:800;font-size:18px;flex:0 0 auto;user-select:none;-webkit-user-select:none;touch-action:manipulation;-webkit-tap-highlight-color:transparent;cursor:pointer;background:none;border:0}
 .stepbtn:hover{color:var(--volt);background:rgba(255,255,255,.03)}
+.stepbtn:active{color:var(--volt);background:rgba(255,107,44,.15);border-radius:8px}
 .stepval{flex:1;text-align:center;font-family:Oswald;font-weight:600;font-size:16.5px;letter-spacing:.02em;white-space:nowrap}
 .stepval small{font-size:10px;color:var(--dim);font-family:Archivo;font-weight:700;margin-left:1px}
 .deltachip{font-size:11px;font-weight:800;text-align:center;border-radius:8px;padding:5px 2px;letter-spacing:.02em}
@@ -194,9 +195,10 @@ main{flex:1;padding:18px 16px 178px}
 .week-div::after{content:"";flex:1;height:1px;background:var(--line)}
 
 /* library */
-.libcard{display:flex;gap:13px;width:100%;text-align:left;padding:14px 15px}
+.libcard{display:flex;gap:13px;width:100%;text-align:left;padding:14px 15px;align-items:center}
 .libicon{width:42px;height:42px;border-radius:11px;background:var(--card3);display:grid;place-items:center;flex:0 0 auto;font-family:Oswald;font-weight:600;font-size:12px;color:var(--volt);letter-spacing:.04em}
-.libname{font-weight:700;font-size:14.5px}
+.libmid{flex:1;min-width:0}
+.libname{font-weight:700;font-size:14.5px;display:block;line-height:1.3;overflow-wrap:anywhere}
 .libmeta{font-size:11.5px;color:var(--dim);margin-top:2px;font-weight:500}
 .libright{margin-left:auto;text-align:right;flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:5px}
 .pbchip{font-size:10.5px;font-weight:800;color:var(--gold);letter-spacing:.03em}
@@ -894,7 +896,11 @@ function svgSpark(vals,w,hh){
 }
 
 /* ================= FX ================= */
-function toast(html,cls){const t=document.createElement('div');t.className='toast'+(cls?' '+cls:'');t.innerHTML=html;$('#toasts').appendChild(t);requestAnimationFrame(()=>t.classList.add('on'));setTimeout(()=>{t.classList.remove('on');setTimeout(()=>t.remove(),300)},2700)}
+function toast(html,cls){
+  const host=$('#toasts');
+  /* replace any existing toast instead of stacking a ladder */
+  host.querySelectorAll('.toast').forEach(t=>t.remove());
+  const t=document.createElement('div');t.className='toast'+(cls?' '+cls:'');t.innerHTML=html;host.appendChild(t);requestAnimationFrame(()=>t.classList.add('on'));setTimeout(()=>{t.classList.remove('on');setTimeout(()=>t.remove(),300)},2200)}
 function boom(){
   if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
   const c=$('#fx'),x=c.getContext('2d');c.width=innerWidth;c.height=innerHeight;
@@ -1087,8 +1093,10 @@ function wireHolds(){
     const stop=()=>{if(to){clearTimeout(to);to=null}if(iv){clearInterval(iv);iv=null}};
     const fire=()=>{try{(Function('return '+b.dataset.hold))()}catch(e){}};
     b._holdStop&&b._holdStop();
+    let moved=false;
     const down=e=>{
       if(e.button!==undefined&&e.button!==0)return;
+      moved=false;
       e.preventDefault();
       stop();fire();
       to=setTimeout(()=>{
@@ -1098,8 +1106,15 @@ function wireHolds(){
         },95);
       },420);
     };
-    b.addEventListener('pointerdown',down);
-    ['pointerup','pointercancel','lostpointercapture','pointerleave'].forEach(ev=>b.addEventListener(ev,stop));
+    const move=e=>{ if(Math.abs(e.clientX-(down._x||e.clientX))>12||Math.abs(e.clientY-(down._y||e.clientY))>12) moved=true; };
+    const origDown=down;
+    const down2=e=>{ down._x=e.clientX; down._y=e.clientY; origDown(e); };
+    b.addEventListener('pointerdown',down2);
+    b.addEventListener('pointermove',move);
+    ['pointerup','pointercancel','lostpointercapture'].forEach(ev=>b.addEventListener(ev,stop));
+    /* pointerleave removed: tiny finger drift on touch was killing taps instantly.
+       Instead: on pointerup, if the finger drifted off the button, just stop (no extra fire). */
+    b.addEventListener('pointerleave',e=>{ if(e.pointerType==='mouse') stop(); });
     b._holdStop=stop;
   });
   document.querySelectorAll('.chk').forEach(c=>c.onclick=()=>G.checkSet(+c.dataset.i,+c.dataset.k));
@@ -1191,7 +1206,7 @@ function vLib(){
     return '<div class="card" style="padding:0;margin-bottom:10px;display:flex;align-items:stretch">'
       +'<button class="libcard" style="flex:1" onclick="G.openExSheet(\''+e.id+'\')">'
       +'<span class="libicon">'+e.g.toUpperCase().slice(0,3)+'</span>'
-      +'<span style="min-width:0"><span class="libname">'+e.n+'</span>'
+      +'<span class="libmid"><span class="libname">'+e.n+'</span>'
       +'<div class="libmeta">'+catChip(e)+' <span class="gchip">'+e.g+'</span></div>'
       +'<div class="libmeta">'+e.def.s+'×'+e.def.min+'-'+e.def.max+' · rest '+e.def.rest+'s · '+(L?'last '+ago(L.sd):'never trained')+'</div></span>'
       +'<span class="libright">'+svgSpark(series)+'<span class="pbchip">'+(be.set?'PB '+fw(be.set.w)+'×'+be.set.r:'')+'</span></span></button>'
