@@ -295,8 +295,18 @@ nav#nav{position:sticky;bottom:0;z-index:40;display:grid;grid-template-columns:r
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 @media (max-width:420px){
   .hero-big{font-size:34px}
-  .setrow{grid-template-columns:36px 28px 1fr 1fr 52px;gap:5px}
+  .setrow{grid-template-columns:32px 22px minmax(0,1fr) minmax(0,1fr);gap:4px}
+  /* delta chip moves under the row instead of stealing horizontal space */
+  .setrow .deltachip{grid-column:3/5;justify-self:end;margin-top:-2px}
+  .setrow{grid-auto-rows:auto}
+  .stepbox{height:42px}
+  .stepbtn{width:36px;font-size:16px}
+  .stepval{font-size:14.5px}
+  .stepval small{display:none}
   .stat .sv{font-size:17px}
+  /* library: hide sparkline on tiny widths so the name gets room */
+  .libright svg{display:none}
+  .libright{flex-direction:row;gap:6px;align-items:center}
 }
 </style>
 </head>
