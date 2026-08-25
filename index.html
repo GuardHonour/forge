@@ -241,7 +241,7 @@ nav#nav{position:sticky;bottom:0;z-index:40;display:grid;grid-template-columns:r
 .pill-ring.go circle.fg{stroke:var(--hot)}
 .pill-time{font-family:Oswald;font-weight:600;font-size:21px;letter-spacing:.04em;font-variant-numeric:tabular-nums;min-width:64px}
 .pill-label{font-size:11px;color:var(--dim);font-weight:700;letter-spacing:.08em;text-transform:uppercase}
-.pill-btns{margin-left:auto;display:flex;gap:6px}
+.pill-btns{margin-left:auto;display:flex;gap:6px;pointer-events:auto}
 .pb{min-width:38px;height:34px;border-radius:9px;border:1px solid var(--line2);color:var(--mut);font-weight:700;font-size:12px;padding:0 10px}
 .pb:hover{color:var(--volt);border-color:var(--volt)}
 @keyframes pillpulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
@@ -502,6 +502,8 @@ function nextDayName(){return progIndex().next.label}
 const KEY='forge.v1';
 const LB=2.2046226218;
 let sess=null;
+function saveSess(){try{if(sess){localStorage.setItem(KEY+'_sess',JSON.stringify(sess))}else{localStorage.removeItem(KEY+'_sess')}}catch(e){}}
+function loadSess(){try{const v=localStorage.getItem(KEY+'_sess');if(v){const o=JSON.parse(v);if(o&&o.entries)return o}}catch(e){}return null}
 const ui={view:'train',progEx:null,proj:true,histOpen:null,libFilter:'',libCat:'All',pickQ:'',pickG:'',pickCat:'All'};
 const T={int:null,left:0,total:0,label:'REST'};
 let clkInt=null;
@@ -945,6 +947,7 @@ function restStop(done){
 /* ================= RENDER: SHELL ================= */
 let __renderedView=null;
 function rerender(){
+  if(typeof sess!=='undefined'&&typeof saveSess==='function')saveSess(); /* persist in-progress workout on every state change */
   const changed=__renderedView!==ui.view;
   __renderedView=ui.view;
   const sc=$('main').scrollTop;$('main').innerHTML='<div class="view"'+(changed?'':' style="animation:none"')+'>'+VIEWS[ui.view]()+'</div>';$('main').scrollTop=sc;
@@ -1520,9 +1523,11 @@ function applyTheme(){
 
 /* boot */
 applyTheme();
+sess=loadSess(); /* restore in-progress workout if the app was closed/refreshed mid-session */
+saveSess();
 /* auto cache-bust: if a newer build is deployed, this install picks it up
    on the next open. APP_BUILD is stamped by the deploy script. */
-const APP_BUILD='2026-08-25d';
+const APP_BUILD='2026-08-25e';
 try{
   const seen=localStorage.getItem('forge_build');
   if(seen && seen!==APP_BUILD){
