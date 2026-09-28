@@ -22,23 +22,42 @@
   --volt:#cbf33a; --volt2:#b4dc22; --on-volt:#12150a;
   --hot:#ff6b4a; --gold:#ffc94a;
   --r:14px;
+  /* The device's unusable edges, named once and read everywhere. The app ships
+     viewport-fit=cover + apple-mobile-web-app-status-bar-style:black-translucent, so in a
+     standalone iPhone PWA the web content is laid out UNDER the status bar and the home
+     indicator: without these the header's own controls are drawn on top of the clock and the
+     battery. env() is 0 wherever there is no such edge (desktop, Android), so nothing moves
+     there - and naming them makes the insets overridable, which is the only way a desktop
+     Chrome probe can measure the iPhone layout at all. */
+  --sat:env(safe-area-inset-top,0px);
+  --sab:env(safe-area-inset-bottom,0px);
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
+html{background:var(--bg);-webkit-text-size-adjust:100%;overscroll-behavior-y:none}
 body{
   background:var(--bg); color:var(--ink);
   font-family:Archivo,system-ui,sans-serif; font-size:15px; line-height:1.45;
+  -webkit-text-size-adjust:100%;
+}
+/* iOS Safari/standalone zooms the whole page when a control smaller than 16px takes focus, and
+   leaves it zoomed: the app then looks "not formatted for iOS" until the field is blurred.
+   Scoped to WebKit-on-iOS so the 14px/13px density is untouched on desktop and Android
+   (verified: desktop Chrome reports CSS.supports('-webkit-touch-callout','none') === false). */
+@supports (-webkit-touch-callout:none){
+  .searchbox,.sel{font-size:16px!important}
+  textarea.searchbox{font-size:16px!important}
 }
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--volt);outline-offset:2px;border-radius:8px}
 ::selection{background:var(--volt);color:var(--on-volt)}
 
-#frame{max-width:500px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column;background:var(--bg2);border-left:1px solid var(--line);border-right:1px solid var(--line)}
+#frame{max-width:500px;margin:0 auto;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;background:var(--bg2);border-left:1px solid var(--line);border-right:1px solid var(--line)}
 
 /* ---------- header ---------- */
 header{
   position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:10px;
-  padding:14px 16px 12px;background:color-mix(in srgb,var(--bg2) 88%,transparent);
+  padding:calc(14px + var(--sat)) 16px 12px;background:color-mix(in srgb,var(--bg2) 88%,transparent);
   backdrop-filter:blur(10px);border-bottom:1px solid var(--line);
 }
 .logo{display:flex;align-items:center;gap:10px}
@@ -307,7 +326,7 @@ main{flex:1;padding:18px 16px 178px}
 .plandex b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
 
 /* ---------- nav ---------- */
-nav#nav{position:sticky;bottom:0;z-index:40;display:grid;grid-template-columns:repeat(6,1fr);background:color-mix(in srgb,var(--bg2) 92%,transparent);backdrop-filter:blur(12px);border-top:1px solid var(--line);padding:6px 6px calc(10px + env(safe-area-inset-bottom))}
+nav#nav{position:sticky;bottom:0;z-index:40;display:grid;grid-template-columns:repeat(6,1fr);background:color-mix(in srgb,var(--bg2) 92%,transparent);backdrop-filter:blur(12px);border-top:1px solid var(--line);padding:6px 6px calc(10px + var(--sab))}
 .navb{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;color:var(--dim);font-size:10px;font-weight:700;letter-spacing:.06em;border-radius:10px;position:relative;transition:color .15s}
 .navb svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .navb.on{color:var(--volt)}
@@ -315,7 +334,7 @@ nav#nav{position:sticky;bottom:0;z-index:40;display:grid;grid-template-columns:r
 .navdot{position:absolute;top:6px;right:calc(50% - 16px);width:7px;height:7px;border-radius:50%;background:var(--hot);box-shadow:0 0 8px var(--hot)}
 
 /* ---------- overlays ---------- */
-#pill{position:fixed;left:12px;transform:none;bottom:86px;z-index:45;width:min(330px,calc(100vw - 24px));
+#pill{position:fixed;left:12px;transform:none;bottom:calc(86px + var(--sab));z-index:45;width:min(330px,calc(100vw - 24px));
   background:var(--card2);border:1px solid var(--line2);border-radius:14px;padding:9px 12px;display:none;align-items:center;gap:11px;box-shadow:0 12px 32px rgba(0,0,0,.5);pointer-events:none}
 #pill.on{display:flex}
 .pill-ring{width:38px;height:38px;flex:0 0 auto}
@@ -333,8 +352,8 @@ nav#nav{position:sticky;bottom:0;z-index:40;display:grid;grid-template-columns:r
 #ovl{position:fixed;inset:0;z-index:60;display:none}
 #ovl.on{display:block}
 .backdrop{position:absolute;inset:0;background:rgba(4,5,6,.72);backdrop-filter:blur(5px)}
-.sheet{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:min(500px,100vw);max-height:88dvh;overflow-y:auto;
-  background:var(--bg2);border:1px solid var(--line);border-bottom:0;border-radius:20px 20px 0 0;padding:10px 18px calc(22px + env(safe-area-inset-bottom));animation:sup .28s cubic-bezier(.2,.9,.3,1)}
+.sheet{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:min(500px,100vw);max-height:88vh;max-height:88dvh;overflow-y:auto;
+  background:var(--bg2);border:1px solid var(--line);border-bottom:0;border-radius:20px 20px 0 0;padding:10px 18px calc(22px + var(--sab));animation:sup .28s cubic-bezier(.2,.9,.3,1)}
 @keyframes sup{from{transform:translate(-50%,40px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
 .grab{width:38px;height:4px;border-radius:99px;background:var(--line2);margin:4px auto 14px}
 .sheet h2{font-family:Oswald,system-ui,sans-serif;font-weight:600;font-size:22px;letter-spacing:.03em;margin-bottom:4px}
@@ -360,7 +379,7 @@ nav#nav{position:sticky;bottom:0;z-index:40;display:grid;grid-template-columns:r
 .segb{padding:7px 16px;border-radius:8px;font-weight:700;font-size:13px;color:var(--mut)}
 .segb.on{background:var(--volt);color:var(--on-volt)}
 
-#toasts{position:fixed;left:50%;transform:translateX(-50%);bottom:132px;z-index:50;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;width:min(430px,calc(100vw - 40px))}
+#toasts{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(132px + var(--sab));z-index:50;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;width:min(430px,calc(100vw - 40px))}
 .toast{background:var(--card2);border:1px solid var(--line2);border-radius:12px;padding:11px 16px;font-size:13.5px;font-weight:600;box-shadow:0 10px 30px rgba(0,0,0,.5);opacity:0;transform:translateY(8px);transition:all .25s;text-align:center}
 .toast.on{opacity:1;transform:none}
 .toast.hot{border-color:color-mix(in srgb,var(--hot) 55%,transparent);color:var(--hot)}
@@ -4292,7 +4311,7 @@ saveSess();
 /* Auto cache-bust: if a newer build is deployed, this install picks it up on
    the next open. APP_BUILD must be bumped whenever index.html ships, otherwise
    a cached home-screen copy keeps running the old code. */
-const APP_BUILD='2026-08-25p';
+const APP_BUILD='2026-08-25q';
 try{
   const seen=localStorage.getItem('forge_build');
   if(seen && seen!==APP_BUILD){
