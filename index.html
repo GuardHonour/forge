@@ -208,6 +208,14 @@ main{flex:1;padding:18px 16px 178px}
 .rxnext{margin-left:auto;color:var(--volt);background:color-mix(in srgb,var(--volt) 10%,transparent);border-color:color-mix(in srgb,var(--volt) 32%,transparent)}
 .rxnext b{font-family:Oswald,system-ui,sans-serif;font-size:14px;font-weight:600;letter-spacing:.03em}
 .rxwhy{font-size:11.5px;color:var(--dim);line-height:1.45;margin-top:6px}
+/* The one line that answers "what goes on the bar today, and is it going up?" —
+   above the reasoning and in the reading colour, because a prescription the user
+   cannot find is not a prescription. This is the line that was missing: the card
+   showed last session's per-set loads and a NEXT pill with nothing stating that
+   the pill is today's single weight for every working set. */
+.rxprog{color:var(--mut);font-weight:600}
+.rxprog b{color:var(--volt);font-family:Oswald,system-ui,sans-serif;font-size:12.5px;font-weight:600}
+.rxprog .dn{color:var(--hot)}
 /* a set dialled away from the recommendation says so where the weight lives */
 .deltachip.rec{color:var(--volt);background:color-mix(in srgb,var(--volt) 8%,transparent);border:1px dashed color-mix(in srgb,var(--volt) 42%,transparent);font-size:9.5px;line-height:1.2;padding:4px 1px;letter-spacing:0}
 
@@ -684,7 +692,8 @@ function dShort(ds){return new Date(ds+'T00:00:00').toLocaleDateString(undefined
 function dFull(ds){return new Date(ds+'T00:00:00').toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'})}
 function ago(ds){const n=Math.round((new Date(todayISO()+'T00:00:00')-new Date(ds+'T00:00:00'))/864e5);if(n<=0)return'today';if(n===1)return'yesterday';if(n<7)return n+'d ago';if(n<14)return'1w ago';return Math.floor(n/7)+'w ago'}
 function rng(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
-const r125=x=>Math.round(x/1.25)*1.25;
+/* the plate grid lives in the units section (snapW/gridOf) — it has to know the
+   unit and the exercise's own increment, so it is not a bare rounding helper */
 const fn1=v=>(Math.round(v*100)/100).toString();
 const loc=n=>Math.round(n).toLocaleString('en-AU');
 function comp(n){n=Math.round(n);return n>=1000?(Math.round(n/100)/10)+'k':''+n}
@@ -697,9 +706,40 @@ const U=()=>S.unit||'kg';
 const dw=kg=>U()==='kg'?kg:kg*LB;
 const uw=v=>U()==='kg'?v:v/LB;
 const wl=()=>U()==='kg'?'kg':'lb';
-function fw(kg){const v=dw(kg);return Number.isInteger(v)?''+v:String(Math.round(v*10)/10)}
+/* A weight IS the load, so the formatter may not invent precision. The engine
+   snaps every load to a real plate grid, and printing that at one decimal turned
+   43.75 kg into "43.8" — a weight no plate combination makes, which reads as the
+   app not knowing what is on the bar. Two decimals is exact for a 1.25 kg step
+   and for the lb conversion; trailing zeros still drop.
+   Bodyweight is deliberately NOT this function: a 0.1 kg step is a genuine tenth
+   there, which is why logBw/bwSeries round it themselves. */
+function fw(kg){const v=Math.round(dw(kg)*100)/100;return Number.isInteger(v)?''+v:String(v)}
 function fwea(kg,dbFlag){return fw(kg)+(dbFlag?'<small>'+wl()+' ea</small>':(kg===0?'':'<small>'+wl()+'</small>'))}
-function stepKg(def){return U()==='kg'?def.inc:5/LB}
+/* ---- THE PLATE GRID: what can actually be loaded ----------------------------
+   Storage is kg in both units, but the smallest real jump is not the same number
+   in each, and it is not the same for a barbell, a dumbbell and a cable stack, so
+   the snap takes the exercise's OWN def.inc.
+     kg — def.inc (barbell 2.5/5, dumbbell 2, cable and machine 2.5/5). This used
+          to be one global 1.25 kg grid for every exercise, which prescribed an
+          18.75 kg dumbbell and a 117.5 kg squat — 48.75 kg per side, which no
+          combination of plates makes. A load nobody can load is not a
+          prescription, it is a dead end.
+     lb — 5 lb, because an lb rack steps 2.5 lb a side. The old code snapped in kg
+          and then multiplied by 2.2046, so an lb user was told to load "96.45 lb".
+   Snapping happens when a load is PROPOSED or STEPPED. It never happens to a
+   weight being SAVED: a logged weight is a measurement of what was lifted, so a
+   grid change cannot reach back and rewrite the log (see G.save). */
+const LBSTEP=5;
+const gridOf=inc=>U()==='kg'?(inc>0?inc:1.25):LBSTEP/LB;
+/* dir: 'down' floors to the grid, 'up' ceils, anything else takes the nearest.
+   The direction matters because "nearest" can round an intended increase back UP
+   to the step the engine was trying to avoid — see nextLoad. */
+function snapTo(kg,inc,dir){const s=gridOf(inc),q=kg/s;
+  return (dir==='down'?Math.floor(q):dir==='up'?Math.ceil(q):Math.round(q))*s}
+function snapW(kg,inc){return snapTo(kg,inc)}
+function stepKg(def){return gridOf(def&&def.inc)}
+/* step a load by whole grid steps, in whichever unit the user thinks in */
+function stepLoad(w,d,ex){const s=stepKg(ex&&ex.def);return Math.max(0,U()==='kg'?w+d*s:uw(dw(w)+d*s))}
 
 /* ---- seed history (9 weeks, deterministic) ---- */
 function seed(){
@@ -714,13 +754,16 @@ function seed(){
         const held=R()<0.15&&!ex.bw&&!ex.bwPlus;
         const grow=(9-w)*dd.inc*0.55;
         const jitter=held?0:(R()<0.5?-dd.inc/2:dd.inc/2);
-        const top=r125(Math.max(dd.start*(ex.bw?0:1),ex.bw?0:dd.start*0+grow+jitter+dd.start));
+        /* demo history is history: it goes on the same plate grid the engine
+           prescribes from, or "Regenerate demo history" fills the log with loads
+           nobody could have put on the bar */
+        const top=snapW(Math.max(dd.start*(ex.bw?0:1),ex.bw?0:dd.start*0+grow+jitter+dd.start),dd.inc);
         const sets=[],n=dd.s,lo=dd.min,hi=dd.max;
         for(let s=0;s<n;s++){
           let r=Math.round(hi-(hi-lo)*Math.pow(R(),1.6)); if(R()<0.12)r=Math.max(lo-1,1);
           let wt=0;
-          if(ex.bwPlus){wt=Math.max(0,r125(Math.max(0,top-(s===n-1&&R()<0.4?dd.inc/2:0))))}
-          else if(!ex.bw){wt=r125(Math.max(0,top-(s===n-1&&R()<0.4?dd.inc/2:0)))}
+          if(ex.bwPlus){wt=Math.max(0,snapW(Math.max(0,top-(s===n-1&&R()<0.4?dd.inc/2:0)),dd.inc))}
+          else if(!ex.bw){wt=snapW(Math.max(0,top-(s===n-1&&R()<0.4?dd.inc/2:0)),dd.inc)}
           sets.push({w:wt,r});
         }
         entries.push({id:px.id,sets});
@@ -879,11 +922,11 @@ function suggest(exId){
   if(ex.bw)return{w:0,note:'Bodyweight · chase reps'};
   /* only working sets drive the next load — a warm-up is not evidence of capacity */
   const sets=volSets(L.e.sets);
-  if(!sets.length)return{w:r125(d.start),note:'Only warm-ups logged · starting load'};
+  if(!sets.length)return{w:snapW(d.start,d.inc),note:'Only warm-ups logged · starting load'};
   const mx=Math.max.apply(null,sets.map(s=>s.w));
-  if(sets.every(s=>s.r>=d.max))return{w:r125(mx+d.inc),note:'Hit '+d.max+'s across · add '+fw(d.inc)+' '+wl()};
-  if(sets.some(s=>s.r<d.min)&&mx<=d.start*1.001)return{w:r125(mx),note:'Own the form · same load'};
-  return{w:r125(mx),note:'Same load · chase reps'};
+  if(sets.every(s=>s.r>=d.max))return{w:snapW(mx+d.inc,d.inc),note:'Hit '+d.max+'s across · add '+fw(d.inc)+' '+wl()};
+  if(sets.some(s=>s.r<d.min)&&mx<=d.start*1.001)return{w:snapW(mx,d.inc),note:'Own the form · same load'};
+  return{w:snapW(mx,d.inc),note:'Same load · chase reps'};
 }
 
 function weekKeys(n){const out=[],m=mondayOf(todayISO());for(let i=n-1;i>=0;i--)out.push(addDays(m,-7*i));return out}
@@ -1337,7 +1380,7 @@ function nextLoad(exId){
   if(allTop){
     if(delta!==null&&delta>=2){factor=1.075;note='Topped the range with '+rir+' still in reserve — take the double jump.';why='Every set reached '+d.max+' reps with effort to spare, so the load is well under your capacity.'}
     else if(delta!==null&&delta<=-1){factor=1+(d.inc/mx)*0.5;note='Topped the range but it cost you — smaller jump, rebuild the reps.';why='You hit the rep target close to maximal effort, so a full increment may not hold.'}
-    else{factor=1+(d.inc/mx);note='Hit '+d.max+'s across — add '+fw(d.inc)+' '+wl()+' next time.';why='Every set reached the top of the rep range: that is the trigger to buy more weight.'}
+    else{factor=1+(d.inc/mx);note='Hit '+d.max+'s across — add '+fw(d.inc)+' '+wl()+'.';why='Every set reached the top of the rep range: that is the trigger to buy more weight.'}
   }else if(anyLow){
     if(delta!==null&&delta>=2){note='Reps fell but you had '+rir+' left — hold the load and actually push.';why='Missing the rep floor while reporting reserve effort suggests the sets ended early, not that the load is too heavy.'}
     else if(delta!==null&&delta<=-1){factor=0.95;note='Grinding and short of reps — back off about 5% and rebuild.';why='Maximal effort with missed reps is a fatigue signal, not a strength signal.'}
@@ -1357,17 +1400,29 @@ function nextLoad(exId){
     factor=damped/mx;
   }
   factor=Math.max(0.90,Math.min(1.10,factor));
-  const w=r125(mx*factor);
+  /* An increase smaller than one plate step cannot be loaded, and rounding it to
+     the nearest grid point hands back the FULL step — the exact opposite of what
+     "it cost you, smaller jump, rebuild the reps" means. So an intended increase
+     under one step becomes a hold, which is the honest loadable reading of "do
+     not go up much this time". */
+  const gstep=gridOf(d.inc);
+  const partial=factor>1&&(factor-1)*mx<gstep-1e-9;
+  /* The 10% guardrail is a promise about the LOAD, so the grid must not round
+     through it: on a 5 kg step the nearest loadable weight to mx*1.10 can sit
+     half a step above the ceiling, a jump the evidence does not support. */
+  const cap=mx*1.10;
+  let w=partial?snapTo(mx*factor,d.inc,'down'):snapW(mx*factor,d.inc);
+  while(w>cap+1e-9&&w-gstep>=0)w=snapW(w-gstep,d.inc);
   return {w:w,jump:(w>mx?1:(w<mx?-1:0)),rir:rir,conf:e1conf(mx,Math.max.apply(null,sets.map(s=>s.r)),rir),
     delta:delta,trust:trust,note:note,why:why,from:mx,pct:mx?Math.round((w/mx-1)*1000)/10:0};
 }
 /* Warm-up ramp to a working load. Ramp sets stay well short of failure
    (RPE ~5-6) or they cost you the working sets they were meant to prepare. */
-function warmupRamp(kg){
+function warmupRamp(kg,inc){
   if(!kg||kg<=0)return [];
   const steps=[[0.45,8],[0.62,5],[0.78,3],[0.88,2]];
   const out=[];let prev=0;
-  steps.forEach(([p,r])=>{const w=r125(kg*p);if(w>prev&&w<kg){out.push({w:w,r:r});prev=w}});
+  steps.forEach(([p,r])=>{const w=snapW(kg*p,inc);if(w>prev&&w<kg){out.push({w:w,r:r});prev=w}});
   return out;
 }
 /* Session internal load (Foster-style): effort x duration. Reported as an
@@ -1664,7 +1719,10 @@ function vCoach(){
    +'<div class="card"><div style="font-size:12px;color:var(--dim);margin-bottom:6px">'+esc(next.split.name)+' · session '+(next.idx+1)+' of '+next.split.days.length+'</div>'
    +rxRows(next.next.rid)
    +'<button class="btn btn-pri btn-block" style="margin-top:12px" onclick="G.startNext()">Start '+esc(next.next.label)+'</button></div>';
-  const ramp=warmupRamp((ROUTINES[next.next.rid].ex.map(p=>nextLoad(p.id).w).filter(w=>w>0)[0])||0);
+  /* the ramp warms up to the FIRST working weight, so it has to step on that
+     exercise's own plate grid rather than a generic one */
+  const rxList=ROUTINES[next.next.rid].ex.map(p=>({id:p.id,nl:nextLoad(p.id)})).filter(x=>x.nl.w>0);
+  const ramp=rxList.length?warmupRamp(rxList[0].nl.w,(EXBY[rxList[0].id]||{def:{}}).def.inc):[];
   if(ramp.length)h+='<div style="font-size:11.5px;color:var(--dim);margin-top:8px;text-align:center">Warm-up to your first working weight: '
    +ramp.map(r=>fw(r.w)+'×'+r.r).join(' → ')+'</div>';
   h+='</div>';
@@ -2882,8 +2940,42 @@ function vSession(){
     /* ONE prescription engine on this card: the same RIR-aware nextLoad the Coach
        uses, so the load in Train and the load in the Coach cannot drift apart. */
     const nl=nextLoad(en.id),nw=nl.w,db=exDb(en.id);
+    /* The prescription is ONE load for EVERY working set, and the card has to say
+       so out loud. It used to show last session's per-set loads ("70×8 · 70×8 ·
+       72.5×6") beside a "NEXT 70 kg" pill and an unlabelled tonnage chip, with
+       nothing stating which of those numbers was today's — which is why a reader
+       asked "so what IS the recommended weight for this exercise today?".
+       The anchor is nl.from: the heaviest working set of last session, i.e. the
+       number the progression is measured against. */
+    const workN=volSets(en.sets).length||ex.def.s;
+    const fromW=(!ex.bw&&typeof nl.from==='number'&&nl.from>0)?nl.from:null;
+    let progLine='';
+    if(!ex.bw&&nw>0){
+      const now='<b>'+fw(nw)+'</b> '+wl()+(db?' ea':'');
+      const setsTxt='All '+workN+' working set'+(workN===1?'':'s')+' at '+now;
+      if(fromW===null)progLine=setsTxt+' — first time with this lift.';
+      else{
+        const d=nw-fromW;
+        if(d>0.001)progLine=setsTxt+' — <b>+'+fw(d)+'</b> on last session, whose top set was '+fw(fromW)+' '+wl()+'.';
+        else if(d<-0.001)progLine=setsTxt+' — <span class="dn">'+fw(d)+'</span> from last session, whose top set was '+fw(fromW)+' '+wl()+'.';
+        else progLine=setsTxt+' — the same as last session\'s top set, so chase reps before more weight.';
+      }
+    }
     const doneV=volSets(en.sets.filter(s=>s.done)).reduce((a,s)=>a+repLoad(en.id,s.w)*s.r,0);
-    const lastLine=pv?en.sets.map((_,k)=>pv.e.sets[k]?fw(pv.e.sets[k].w)+'×'+pv.e.sets[k].r:'new').join(' · '):'No history · new lift';
+    /* Last session's sets — a RECORD, and it must not read as a plan for today.
+       Three bare numbers under the title did exactly that: a reader took
+       "70×8 · 70×8 · 72.5×6" for today's sets and asked what the recommended
+       weight was. When every set used the same weight and reps it says so as one
+       phrase; only a session whose loads actually differed is listed per set, and
+       then each number carries its set label. */
+    let lastLine='No history · new lift';
+    if(pv){
+      const ps=en.sets.map((_,k)=>pv.e.sets[k]).filter(Boolean);
+      const flat=ps.length&&ps.every(s=>Math.abs(s.w-ps[0].w)<1e-9&&s.r===ps[0].r);
+      lastLine=flat
+        ?ps.length+' × '+ps[0].r+' @ '+fw(ps[0].w)+' '+wl()+(db?' ea':'')
+        :en.sets.map((_,k)=>pv.e.sets[k]?'S'+(k+1)+' '+fw(pv.e.sets[k].w)+'×'+pv.e.sets[k].r:'S'+(k+1)+' new').join(' · ');
+    }
     h+='<div class="xcard">'
       +'<button class="xhead" onclick="G.openExSheet(\''+en.id+'\')">'
       +'<span class="xnum">'+pad(i+1)+'</span><span><span class="xtitle">'+ex.n+'</span>'
@@ -2897,8 +2989,11 @@ function vSession(){
         +'<b>'+ex.def.s+'×'+ex.def.min+'–'+ex.def.max+'</b> '+repLower(ex)+'</span>'
       +(ex.bw
         ?'<span class="rxpill rxnext">Bodyweight</span>'
-        :'<span class="rxpill rxnext" title="'+esc(nl.why||'')+'">Next <b>'+fw(nw)+'</b> '+wl()+(db?' ea':'')+'</span>')
+        :'<span class="rxpill rxnext" title="'+esc(nl.why||'')+'">Today <b>'+fw(nw)+'</b> '+wl()+(db?' ea':'')+'</span>')
       +'</div>'
+      /* the line that states, once, what today's load is and what it is measured
+         against — before the reasoning, because the number comes first */
+      +(progLine?'<div class="rxwhy rxprog">'+progLine+'</div>':'')
       +'<div class="rxwhy">'+esc(nl.note)+'</div>'
       +(rirNote(nl)?'<div class="rxwhy" style="color:var(--dim)">'+esc(rirNote(nl))+'</div>':'');
     if(en._pr)h+='<div class="prbanner">VOLUME PR · beat '+dShort(pv.sd)+' by +'+comp(doneV-entryVol(pv.e))+' '+wl()+'</div>';
@@ -2916,8 +3011,12 @@ function vSession(){
            instead of only at the top of the card */
         chip='<span class="deltachip rec" title="Recommended '+fw(nw)+' '+wl()+' · tap + or - to take it">REC<br>'+fw(nw)+'</span>';
       }else if(pv&&pv.e.sets[k]){
-        const pvv=pv.e.sets[k].w*pv.e.sets[k].r;
-        chip='<span class="deltachip eq" style="opacity:.55">'+comp(pvv)+'</span>';
+        /* Last session's set for this row. It used to print the bare TONNAGE (for
+           a 100×8 that is "800"), which sits in the same column as the weight and
+           so reads as a weight nobody can load. Written in the same notation as
+           the row it is being compared with, it cannot be mistaken for one. */
+        const p=pv.e.sets[k];
+        chip='<span class="deltachip eq" style="opacity:.55" title="Last session: '+fw(p.w)+' '+wl()+' × '+p.r+'">'+fw(p.w)+'×'+p.r+'</span>';
       }
       const kd=kindOf(st);
       h+='<div class="setrow'+(st.done?' done':'')+(isWarm(st)?' wu':'')+'" data-row="'+i+'-'+k+'">'
@@ -3512,8 +3611,9 @@ function bwAt(date){
 function logBw(kg,date){
   const d=date||todayISO();
   if(typeof kg!=='number'||!isFinite(kg)||kg<=0)return null;
-  /* 0.1 kg, NOT r125: a body is not a barbell, and rounding to the 1.25 kg
-     plate increment silently rewrote 79 kg as 78.75. */
+  /* 0.1 kg, NOT a plate grid: a body is not a barbell, and snapping bodyweight to
+     the 1.25 kg barbell increment silently rewrote 79 kg as 78.75. Weight
+     selection never routes through fw()/snapW() for the same reason. */
   const v=Math.round(kg*10)/10;
   if(!Array.isArray(S.bwLog))S.bwLog=[];
   const ex=S.bwLog.find(x=>x&&x.date===d);
@@ -3831,7 +3931,7 @@ const G={
   bump(i,k,f,d){
     const en=sess.entries[i],st=en.sets[k];
     if(st.done){toast('Set already logged · untick to change');return}
-    if(f==='w'){const ex=EXBY[en.id];if(ex.bw)return;st.w=uw(dw(st.w)+d*stepKg(ex.def));if(st.w<0)st.w=0}
+    if(f==='w'){const ex=EXBY[en.id];if(ex.bw)return;st.w=stepLoad(st.w,d,ex)}
     else st.r=Math.min(60,Math.max(0,st.r+d));
     /* surgical update: touch only this cell so hold-repeat cannot flash the page */
     const row=document.querySelector('[data-row="'+i+'-'+k+'"]');
@@ -3961,7 +4061,7 @@ const G={
     const work=volSets(en.sets).map(s=>s.w).filter(w=>w>0);
     const top=work.length?Math.max.apply(null,work):nextLoad(en.id).w;
     if(!(top>0)){toast('Add a working load first');return}
-    const ramp=warmupRamp(top);
+    const ramp=warmupRamp(top,ex.def.inc);
     if(!ramp.length){toast('Load too light to ramp');return}
     en.sets=ramp.map(r=>({w:r.w,r:r.r,k:'wu',done:false})).concat(en.sets);
     rerender();
@@ -3973,7 +4073,13 @@ const G={
     const rec={id:'w'+Date.now(),date:todayISO(),name:sess.name,routineId:sess.routineId,dur,
       entries:sess.entries.map(en=>{
         const sets=en.sets.filter(s=>s.done).map(s=>{
-          const o={w:r125(s.w),r:s.r};
+          /* The logged weight is what the row SHOWED and what was lifted, so it is
+             stored as-is. Re-snapping here used to rewrite the number under the
+             lifter: a dumbbell stepped to 28 kg (def.inc 2) was written to the log
+             as 27.5, because the save path applied a grid the stepper never used.
+             The grid belongs at prescription time, not on the record. It also
+             means a load carried over from an older build is not quietly moved. */
+          const o={w:Math.max(0,Number(s.w)||0),r:s.r};
           /* set kind: absent means an ordinary working set, which is also what
              every pre-existing record means — so this stays backward-safe */
           if(s.k)o.k=s.k;
@@ -4014,7 +4120,9 @@ const G={
     const en=s.entries[ei];if(!en)return;
     const st=en.sets[si];if(!st)return;
     const ex=EXBY[en.id];
-    if(f==='w')st.w=Math.max(0,r125(st.w+d*((ex&&ex.inc)||2.5)));
+    /* this read ex.inc, which does not exist (it is ex.def.inc), so every edit
+       stepped by the 2.5 fallback regardless of the exercise */
+    if(f==='w')st.w=stepLoad(st.w,d,ex);
     else st.r=Math.max(0,Math.min(200,st.r+d));
     saveLS();paintSessionEdit();
   },
@@ -4057,7 +4165,7 @@ const G={
     /* inherit the previous set, or the last known load for this lift */
     const prev=en.sets[en.sets.length-1];
     const L=prev?{w:prev.w,r:prev.r}:(latest(en.id)||{w:suggest(en.id).w,r:(EXBY[en.id]||{def:{max:8}}).def.max});
-    en.sets.push({w:r125(L.w||0),r:L.r||8});
+    en.sets.push({w:snapW(L.w||0,(EXBY[en.id]||{def:{}}).def.inc),r:L.r||8});
     saveLS();paintSessionEdit();
   },
   editDelSet(ei,si){
@@ -4311,7 +4419,7 @@ saveSess();
 /* Auto cache-bust: if a newer build is deployed, this install picks it up on
    the next open. APP_BUILD must be bumped whenever index.html ships, otherwise
    a cached home-screen copy keeps running the old code. */
-const APP_BUILD='2026-08-25q';
+const APP_BUILD='2026-08-25r';
 try{
   const seen=localStorage.getItem('forge_build');
   if(seen && seen!==APP_BUILD){
