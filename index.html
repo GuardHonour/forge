@@ -738,8 +738,11 @@ function snapTo(kg,inc,dir){const s=gridOf(inc),q=kg/s;
   return (dir==='down'?Math.floor(q):dir==='up'?Math.ceil(q):Math.round(q))*s}
 function snapW(kg,inc){return snapTo(kg,inc)}
 function stepKg(def){return gridOf(def&&def.inc)}
-/* step a load by whole grid steps, in whichever unit the user thinks in */
-function stepLoad(w,d,ex){const s=stepKg(ex&&ex.def);return Math.max(0,U()==='kg'?w+d*s:uw(dw(w)+d*s))}
+/* step a load by whole grid steps, in whichever unit the user thinks in.
+   A bodyweight lift steps THROUGH zero into assistance (see isBwEx below);
+   every other lift floors at zero, because a barbell cannot weigh less. */
+function stepLoad(w,d,ex){const s=stepKg(ex&&ex.def);const kg=U()==='kg'?w+d*s:uw(dw(w)+d*s);
+  return (ex&&(ex.bw||ex.bwPlus))?kg:Math.max(0,kg)}
 
 /* ---- seed history (9 weeks, deterministic) ---- */
 function seed(){
@@ -814,7 +817,22 @@ if(S.dayEx){Object.entries(S.dayEx).forEach(([rid,ids])=>{if(ROUTINES[rid]&&Arra
    lift moves double that; single-arm rows and one-bell extensions do not.
    `imp` (implements) states this per exercise instead of assuming. */
 const impCount=id=>(EXBY[id]&&EXBY[id].imp)||1;
-const repLoad=(id,w)=>w*impCount(id);
+/* ================= THE BODYWEIGHT FAMILY =================
+   `bw` is bodyweight-only and `bwPlus` is bodyweight plus added load, but they
+   are ONE family with ONE signed load — because a bodyweight lift moves in both
+   directions from bodyweight:
+
+       w > 0   load ADDED     (belt, dip belt, vest)
+       w = 0   BODYWEIGHT     — a real entry, not a missing number
+       w < 0   ASSISTANCE     (band, assist machine) — the help you were given
+
+   They used to be split half-features, which is what made the pull-up look
+   broken: `chinup` was `bw` so `G.bump` returned early and it could never take
+   a plate, while `pullup` was `bwPlus` so `checkSet` refused w<=0 and it could
+   never be logged at bodyweight. Same movement, opposite grip, one usable half
+   each. Both now take added AND assisted load, and 0 is bodyweight. */
+const isBwEx=ex=>!!(ex&&(ex.bw||ex.bwPlus));
+const repLoad=(id,w)=>Math.max(0,w)*impCount(id);
 
 /* ================= SET KINDS =================
    Absent `k` means an ordinary working set — which is exactly what every
@@ -881,8 +899,16 @@ const setCount=en=>setStats(en).n;
 const entryVol=e=>volSets(e.sets).reduce((a,s)=>a+repLoad(e.id,s.w)*s.r,0);
 const sessVol=s=>s.entries.reduce((a,e)=>a+entryVol(e),0);
 /* Epley. RIR folds into "effective reps" (a set of 8 at 2 RIR ~ a set of 10).
-   Sets logged before RIR existed have no rir field, so their maths is unchanged. */
-const e1=(w,r,rir)=>r>0?w*(1+(r+(rir||0))/30):0;
+   Sets logged before RIR existed have no rir field, so their maths is unchanged.
+   `w` is clamped at zero so an ASSISTED set (w<0) cannot produce a negative
+   estimate. This is the single reason a negative load is safe anywhere: every
+   tonnage path goes through repLoad() and every e1RM path through e1(), and both
+   floor at zero. An assisted set is real work at a load we cannot state — the
+   app does not model what fraction of bodyweight each movement carries, so
+   claiming a number would be inventing one. It still counts as a SET, which is
+   the currency the Coach's volume landmarks use; it contributes no tonnage and
+   no 1RM evidence, exactly as a bodyweight set already did. */
+const e1=(w,r,rir)=>r>0?Math.max(0,w)*(1+(r+(rir||0))/30):0;
 const effReps=(r,rir)=>r+(rir||0);
 /* Estimate confidence. Above ~12 effective reps the formula diverges from any
    real 1RM, so the coach refuses to present those as precise numbers. */
@@ -911,6 +937,30 @@ function exDb(id){return EXBY[id].db}
    that says "8 reps" about a plank reads as a bug. */
 const repWord=ex=>(ex&&ex.def&&ex.def.unit==='sec')?'SEC':'REPS';
 const repLower=ex=>repWord(ex).toLowerCase();
+/* How a load reads on screen. A bodyweight lift has THREE states, and printing
+   "0 kg" for bodyweight is the reading that made the pull-up look broken — the
+   number looked like a load the lifter had failed to enter. Assist is shown as a
+   magnitude plus the word, because "-20 ASSIST" reads as minus twenty assists. */
+function wCell(ex,w){
+  if(isBwEx(ex)){
+    if(w>0)return '+'+fw(w)+'<small>'+wl()+'</small>';
+    if(w===0)return 'BW<small>&nbsp;</small>';
+    return fw(-w)+'<small>ASSIST</small>';
+  }
+  return fw(w)+'<small>'+wl()+(ex&&ex.db?' EA':'')+'</small>';
+}
+/* The same three states as one line of text, for places that put a load inside a
+   sentence or a table cell rather than in a stepper. */
+function loadLbl(ex,w){
+  if(isBwEx(ex))return w>0?('+'+fw(w)+' '+wl()):w===0?'BW':(fw(-w)+' assist');
+  return fw(w)+' '+wl()+(ex&&ex.db?' ea':'');
+}
+/* Per-set label for a bodyweight lift, kept as short as a plain number so a
+   per-set list stays readable: BW×8, +5×8, 20a×8 (a = assisted). */
+function compactW(ex,w){
+  if(isBwEx(ex))return w>0?('+'+fw(w)):w===0?'BW':(fw(-w)+'a');
+  return fw(w);
+}
 function prevSum(exId,before){const L=lastOcc(exId,before);return L?{sd:L.sd,e:L.e,v:entryVol(L.e)}:null}
 
 function suggest(exId){
@@ -918,8 +968,13 @@ function suggest(exId){
      this: they read nextLoad(), which is RIR-aware and carries the override
      guardrails, so the load you are told to lift is the same in both places. */
   const ex=EXBY[exId],d=ex.def,L=latest(exId);
-  if(!L)return{w:ex.bw?0:d.start,note:'First time · starting load'};
-  if(ex.bw)return{w:0,note:'Bodyweight · chase reps'};
+  if(!L)return{w:isBwEx(ex)?0:d.start,note:'First time · starting load'};
+  if(isBwEx(ex)){
+    const bs0=volSets(L.e.sets||[]);
+    if(!bs0.length)return{w:0,note:'Bodyweight · chase reps'};
+    const m=Math.max.apply(null,bs0.map(s=>s.w));
+    return {w:snapW(m,d.inc),note:m<0?('Assisted · take '+fw(d.inc)+' '+wl()+' off'):m===0?'Bodyweight · chase reps':('Add '+fw(d.inc)+' '+wl())};
+  }
   /* only working sets drive the next load — a warm-up is not evidence of capacity */
   const sets=volSets(L.e.sets);
   if(!sets.length)return{w:snapW(d.start,d.inc),note:'Only warm-ups logged · starting load'};
@@ -1096,8 +1151,19 @@ function trendOf(a){return a.length<2?0:slope(a)}
    keeps working on history recorded before any of this existed.            */
 /* bodyweight lifts have no meaningful 1RM, so they are scored on reps */
 const isBw=id=>!!(EXBY[id]&&EXBY[id].bw);
+/* ...but only while the lift is genuinely UNLOADED. Now that a bodyweight lift
+   can carry added weight, "score it on reps" is a fact about the data, not about
+   the `bw` flag: a weighted chin-up is judged on estimated 1RM exactly like a
+   barbell lift, and a bodyweight pull-up is judged on reps. Reading it from the
+   log keeps a belt from being scored as zero progress, and keeps a bodyweight
+   set from being scored as a zero 1RM. */
+function scoreByReps(exId){
+  const ex=EXBY[exId];
+  if(!ex||!isBwEx(ex))return false;
+  return !S.hist.some(s=>(s.entries||[]).some(en=>en.id===exId&&(en.sets||[]).some(st=>st.w>0)));
+}
 function exHistory(exId){
-  const bw=isBw(exId),out=[];
+  const bw=scoreByReps(exId),out=[];
   S.hist.forEach(s=>{
     const en=s.entries.find(x=>x.id===exId&&x.sets&&x.sets.length);
     if(!en)return;
@@ -1112,7 +1178,7 @@ function exHistory(exId){
   });
   return out;
 }
-const bwNote=id=>isBw(id)?'reps':'e1RM';
+const bwNote=id=>scoreByReps(id)?'reps':'e1RM';
 /* general least squares over arbitrary x (used for date-based trends) */
 function slopeXY(xs,ys){
   const n=xs.length;if(n<2)return 0;
@@ -1214,7 +1280,7 @@ function liftReport(exId){
   if(!h.length)return {id:exId,name:ex?ex.n:exId,n:0};
   const last=h[h.length-1],prev=h.length>1?h[h.length-2]:null;
   const be=bestEver(exId),tr=liftTrend(exId,8),st=stallInfo(exId);
-  return {id:exId,name:ex.n,bw:isBw(exId),n:h.length,last:last,prev:prev,
+  return {id:exId,name:ex.n,bw:scoreByReps(exId),n:h.length,last:last,prev:prev,
     best:be,trend:tr,stall:st,delta:prev?last.e1-prev.e1:0};
 }
 
@@ -1354,8 +1420,57 @@ function rirTrust(rir,prev,want){
    same easy signal twice before allowing more than a 5% jump. */
 function nextLoad(exId){
   const ex=EXBY[exId],d=ex.def,L=latest(exId),want=prof().rir;
-  if(!L)return {w:ex.bw?0:d.start,jump:0,rir:null,conf:null,note:'First time with this lift — start conservative and leave 2-3 reps in reserve.',why:'With no history the opening load is a guess you will correct within one session.'};
-  if(ex.bw)return {w:0,jump:0,rir:null,conf:null,note:'Bodyweight — chase reps, not load.',why:'Without external load, adding reps is the only progression available.'};
+  const bwf=isBwEx(ex);
+  if(!L)return {w:bwf?0:d.start,jump:0,rir:null,conf:null,
+    note:bwf?'Bodyweight — the rep is the target, not the load.':'First time with this lift — start conservative and leave 2-3 reps in reserve.',
+    why:bwf?'With no history the honest opening is your own bodyweight: add weight once the top of the rep range holds, or record assistance (a minus number) if you need help to get there.':'With no history the opening load is a guess you will correct within one session.'};
+  /* ================= BODYWEIGHT PROGRESSION =================
+     ASSIST -> BODYWEIGHT -> ADDED. The sign is the entire model, so progression
+     is one comparison: a bigger w is harder. Assisted work means the goal is to
+     REMOVE the help, which is why topping the range at -20 prescribes -17.5 and
+     not +2.5. This is the branch that used to hand a lifter who could not do a
+     single bodyweight pull-up a prescription of 5 kg on a dip belt, because
+     bwPlus fell through to the weighted engine and `def.start` is 5. */
+  if(bwf){
+    const bs=volSets(L.e.sets||[]);
+    const rir=entryRir(L.e);
+    if(!bs.length)return {w:0,jump:0,rir:null,conf:null,note:'Only warm-ups logged · start at bodyweight.',why:'A ramp is not evidence of capacity.'};
+    const mx=Math.max.apply(null,bs.map(s=>s.w));
+    const inc=gridOf(d.inc);
+    const allTop=bs.every(s=>s.r>=d.max),anyLow=bs.some(s=>s.r<d.min);
+    let w=mx,note='',why='';
+    if(allTop){
+      w=mx+inc;
+      if(mx<0){note='Topped the range with '+fw(-mx)+' '+wl()+' of help — take '+fw(inc)+' off the band.';why='Assistance is a load you are trying to remove, so removing it is the progression until you are at bodyweight.'}
+      else if(mx===0){note='Bodyweight owned at the top of the range — add '+fw(inc)+' '+wl()+'.';why='Every set reached the top of the rep range with no added load, so the movement is no longer the limit.'}
+      else{note='Hit '+d.max+'s across — add '+fw(inc)+' '+wl()+'.';why='Every set reached the top of the rep range, so the belt can take more.'}
+    }else if(anyLow){
+      /* Short of the rep floor: the honest move is EASIER, by one increment — the
+         same arithmetic as adding weight, in the other direction. This is the
+         branch that matters for a lifter who cannot yet do one bodyweight pull-up:
+         a small added load that misses the floor comes straight off to zero. At
+         exactly bodyweight there is nothing left to remove, so it holds and the
+         reps do the work rather than the app inventing assistance. */
+      if(mx===0){
+        w=0;
+        note='Own the form · bodyweight for now, chase the rep floor.';
+        why='Bodyweight is the floor of this lift — with no assistance there is nothing left to take off, so reps come first.';
+      }else{
+        w=mx-inc;
+        note=mx<0?('Short of reps even with help — take '+fw(inc)+' more '+wl()+' of assistance and rebuild.')
+                  :('Short of the rep floor with '+loadLbl(ex,mx)+' — drop '+fw(inc)+' '+wl()+' and rebuild the reps.');
+        why=mx<0?'Missing the rep floor while already assisted means the movement is still too hard at that help level.'
+                 :'Missing the rep floor with weight added means the belt is ahead of the movement, so it comes off before more goes on.';
+      }
+    }else{
+      note='Same load · chase reps until every set reaches '+d.max+'.';
+      why='Inside the rep range, reps are the cheapest progression available.';
+    }
+    return {w:w,jump:(w>mx?1:(w<mx?-1:0)),rir:rir,
+      conf:e1conf(Math.max(0,mx),Math.max.apply(null,bs.map(s=>s.r)),rir),
+      delta:null,trust:{ok:false,why:'on a bodyweight lift the rep count sets the progression, not the effort reading'},
+      note:note,why:why,from:mx,pct:0,bwset:true};
+  }
   const sets=volSets(L.e.sets||[]).filter(s=>s.w>0);
   if(!sets.length)return {w:d.start,jump:0,rir:null,conf:null,note:'Log a weighted set and this becomes exact.',why:'No weighted sets recorded for this lift yet.'};
   const mx=Math.max.apply(null,sets.map(s=>s.w));
@@ -1463,7 +1578,7 @@ function e1Baseline(exId){
    warm-up ramp inflate the score and manufacture a "PR" that was just extra
    warm-up volume. Weighted lifts already went through bestE1(), which is
    kind-aware, so the two branches now agree. */
-const scoreOf=en=>isBw(en.id)?volSets(en.sets).reduce((a,s)=>a+s.r,0):bestE1(en);
+const scoreOf=en=>scoreByReps(en.id)?volSets(en.sets).reduce((a,s)=>a+s.r,0):bestE1(en);
 function allLifts(){const o={};S.hist.forEach(s=>s.entries.forEach(e=>{if(e.sets&&volSets(e.sets).length)o[e.id]=1}));return Object.keys(o)}
 /* genuine PBs only: a first-ever session is a baseline, not a record */
 function recentPRs(days){
@@ -1472,7 +1587,7 @@ function recentPRs(days){
     s.entries.forEach(en=>{
       if(!en.sets||!volSets(en.sets).length)return;
       const sc=scoreOf(en),prev=best[en.id]||0;
-      if(s.date>=cut&&prev>0&&sc>prev+0.01)out.push({date:s.date,id:en.id,name:EXBY[en.id].n,score:sc,delta:sc-prev,bw:isBw(en.id)});
+      if(s.date>=cut&&prev>0&&sc>prev+0.01)out.push({date:s.date,id:en.id,name:EXBY[en.id].n,score:sc,delta:sc-prev,bw:scoreByReps(en.id)});
       if(sc>prev)best[en.id]=sc;
     });
   });
@@ -1683,7 +1798,7 @@ function rxRows(rid){
        +'<span class="rxw" style="color:var(--hot)">—</span></div>';
     const nl=nextLoad(px.id),held=!!nl.override;
     return '<div class="rxrow"><span class="rxn">'+esc(ex.n)+'<div class="rxr">'+esc(nl.note)+'</div></span>'
-     +'<span class="rxw">'+(ex.bw?'BW':fw(nl.w)+' '+wl())+'</span>'
+     +'<span class="rxw">'+loadLbl(ex,nl.w)+'</span>'
      +'<button class="btn btn-sm btn-ghost" style="flex:0 0 auto" aria-label="'+(held?'undo holding':'hold the load on')+' '+esc(ex.n)+'" onclick="G.'+(held?'clearOverride':'override')+'(\''+px.id+'\')">'+(held?'Undo':'Hold')+'</button></div>';
   }).join('');
 }
@@ -2948,16 +3063,22 @@ function vSession(){
        The anchor is nl.from: the heaviest working set of last session, i.e. the
        number the progression is measured against. */
     const workN=volSets(en.sets).length||ex.def.s;
-    const fromW=(!ex.bw&&typeof nl.from==='number'&&nl.from>0)?nl.from:null;
+    /* A bodyweight lift has a load state too — bodyweight, added, or assisted —
+       so it gets the same one-line statement of the day's target rather than
+       falling silent and leaving "0 kg" to be read as a missing number. The
+       arithmetic is unchanged because the sign already means "harder": going
+       from -20 to -17.5 is +2.5, and going from 0 to 2.5 is +2.5. */
+    const bwf=isBwEx(ex);
+    const fromW=(typeof nl.from==='number'&&(bwf||nl.from>0))?nl.from:null;
     let progLine='';
-    if(!ex.bw&&nw>0){
-      const now='<b>'+fw(nw)+'</b> '+wl()+(db?' ea':'');
+    if(bwf||nw>0){
+      const now='<b>'+loadLbl(ex,nw)+'</b>';
       const setsTxt='All '+workN+' working set'+(workN===1?'':'s')+' at '+now;
       if(fromW===null)progLine=setsTxt+' — first time with this lift.';
       else{
         const d=nw-fromW;
-        if(d>0.001)progLine=setsTxt+' — <b>+'+fw(d)+'</b> on last session, whose top set was '+fw(fromW)+' '+wl()+'.';
-        else if(d<-0.001)progLine=setsTxt+' — <span class="dn">'+fw(d)+'</span> from last session, whose top set was '+fw(fromW)+' '+wl()+'.';
+        if(d>0.001)progLine=setsTxt+(bwf?' — <b>+'+fw(d)+'</b> '+wl()+' harder than last session ('+loadLbl(ex,fromW)+').':' — <b>+'+fw(d)+'</b> on last session, whose top set was '+fw(fromW)+' '+wl()+'.');
+        else if(d<-0.001)progLine=setsTxt+(bwf?' — <span class="dn">'+fw(d)+'</span> '+wl()+' easier than last session ('+loadLbl(ex,fromW)+').':' — <span class="dn">'+fw(d)+'</span> from last session, whose top set was '+fw(fromW)+' '+wl()+'.');
         else progLine=setsTxt+' — the same as last session\'s top set, so chase reps before more weight.';
       }
     }
@@ -2973,8 +3094,8 @@ function vSession(){
       const ps=en.sets.map((_,k)=>pv.e.sets[k]).filter(Boolean);
       const flat=ps.length&&ps.every(s=>Math.abs(s.w-ps[0].w)<1e-9&&s.r===ps[0].r);
       lastLine=flat
-        ?ps.length+' × '+ps[0].r+' @ '+fw(ps[0].w)+' '+wl()+(db?' ea':'')
-        :en.sets.map((_,k)=>pv.e.sets[k]?'S'+(k+1)+' '+fw(pv.e.sets[k].w)+'×'+pv.e.sets[k].r:'S'+(k+1)+' new').join(' · ');
+        ?ps.length+' × '+ps[0].r+' @ '+loadLbl(ex,ps[0].w)
+        :en.sets.map((_,k)=>pv.e.sets[k]?'S'+(k+1)+' '+compactW(ex,pv.e.sets[k].w)+'×'+pv.e.sets[k].r:'S'+(k+1)+' new').join(' · ');
     }
     h+='<div class="xcard">'
       +'<button class="xhead" onclick="G.openExSheet(\''+en.id+'\')">'
@@ -2987,8 +3108,8 @@ function vSession(){
     h+='<div class="rxbar">'
       +'<span class="rxpill rxtgt" title="Prescribed rep range for '+esc(ex.n)+'">'
         +'<b>'+ex.def.s+'×'+ex.def.min+'–'+ex.def.max+'</b> '+repLower(ex)+'</span>'
-      +(ex.bw
-        ?'<span class="rxpill rxnext">Bodyweight</span>'
+      +(isBwEx(ex)
+        ?'<span class="rxpill rxnext" title="'+esc(nl.why||'')+'">Today <b>'+loadLbl(ex,nw)+'</b></span>'
         :'<span class="rxpill rxnext" title="'+esc(nl.why||'')+'">Today <b>'+fw(nw)+'</b> '+wl()+(db?' ea':'')+'</span>')
       +'</div>'
       /* the line that states, once, what today's load is and what it is measured
@@ -3003,28 +3124,33 @@ function vSession(){
          chip that reads as a rendering artefact */
       let chip='';
       if(st.done){
-        if(pv&&pv.e.sets[k]){const cv=st.w*st.r,pvv=pv.e.sets[k].w*pv.e.sets[k].r,d=cv-pvv;
+        if(pv&&pv.e.sets[k]){const cv=repLoad(en.id,st.w)*st.r,pvv=repLoad(en.id,pv.e.sets[k].w)*pv.e.sets[k].r,d=cv-pvv;
           chip=d>0?'<span class="deltachip up">+'+comp(d)+'</span>':d<0?'<span class="deltachip down">'+comp(d)+'</span>':'<span class="deltachip eq">EVEN</span>';}
         else chip='<span class="deltachip new">BEST</span>';
-      }else if(!ex.bw&&Math.abs(st.w-nw)>0.001){
+      }else if(Math.abs(st.w-nw)>0.001){
         /* dialled away from the recommendation — say so where the weight lives,
            instead of only at the top of the card */
-        chip='<span class="deltachip rec" title="Recommended '+fw(nw)+' '+wl()+' · tap + or - to take it">REC<br>'+fw(nw)+'</span>';
+        chip='<span class="deltachip rec" title="Recommended '+loadLbl(ex,nw)+' · tap + or - to take it">REC<br>'+compactW(ex,nw)+'</span>';
       }else if(pv&&pv.e.sets[k]){
         /* Last session's set for this row. It used to print the bare TONNAGE (for
            a 100×8 that is "800"), which sits in the same column as the weight and
            so reads as a weight nobody can load. Written in the same notation as
            the row it is being compared with, it cannot be mistaken for one. */
         const p=pv.e.sets[k];
-        chip='<span class="deltachip eq" style="opacity:.55" title="Last session: '+fw(p.w)+' '+wl()+' × '+p.r+'">'+fw(p.w)+'×'+p.r+'</span>';
+        chip='<span class="deltachip eq" style="opacity:.55" title="Last session: '+loadLbl(ex,p.w)+' × '+p.r+'">'+compactW(ex,p.w)+'×'+p.r+'</span>';
       }
       const kd=kindOf(st);
       h+='<div class="setrow'+(st.done?' done':'')+(isWarm(st)?' wu':'')+'" data-row="'+i+'-'+k+'">'
         +'<button class="chk'+(st.done?' on':'')+'" data-i="'+i+'" data-k="'+k+'" aria-label="Complete set '+(k+1)+'"><svg viewBox="0 0 24 24"><path d="M4 12.5 9.5 18 20 6.5"/></svg></button>'
         +'<button class="setidx'+(kd?' kind kind-'+st.k:'')+'" onclick="G.setKindMenu('+i+','+k+')" aria-label="Set '+(k+1)+(kd?' marked '+kd.n:' working set')+'. Change set type, effort or delete it">'+(kd?kd.s:'S'+(k+1))+'</button>'
-        +(ex.bw
-          ?'<div class="stepbox dirty"><span class="stepval">BW</span><span class="stepbtn" style="visibility:hidden">+</span></div>'
-          :'<div class="stepbox"><button class="stepbtn" data-hold=\'G.bump('+i+','+k+',\"w\",-1)\' aria-label="less weight">-</button><span class="stepval" data-w>'+fw(st.w)+'<small>'+wl()+(db?' EA':'')+'</small></span><button class="stepbtn" data-hold=\'G.bump('+i+','+k+',\"w\",1)\' aria-label="more weight">+</button></div>')
+        /* One stepper for every lift. A bodyweight exercise used to be a dead
+           "BW" cell with the buttons hidden, which meant a chin-up could never
+           take a plate — while the pull-up could never be logged at bodyweight.
+           Now every lift steps, and a bodyweight lift steps below zero into
+           ASSISTANCE so a band or assist machine has somewhere to go. */
+        +'<div class="stepbox"><button class="stepbtn" data-hold=\'G.bump('+i+','+k+',\"w\",-1)\' aria-label="less weight">-</button>'
+        +'<span class="stepval" data-w data-wedit="'+i+'-'+k+'" role="button" tabindex="0" aria-label="Weight for set '+(k+1)+'. Tap to type a weight">'+wCell(ex,st.w)+'</span>'
+        +'<button class="stepbtn" data-hold=\'G.bump('+i+','+k+',\"w\",1)\' aria-label="more weight">+</button></div>'
         +'<div class="stepbox"><button class="stepbtn" data-hold=\'G.bump('+i+','+k+',\"r\",-1)\' aria-label="fewer reps">-</button><span class="stepval" data-r>'+st.r+'<small>'+repWord(ex)+'</small></span><button class="stepbtn" data-hold=\'G.bump('+i+','+k+',\"r\",1)\' aria-label="more reps">+</button></div>'
         +(chip||'<span></span>')+'</div>';
     });
@@ -3045,7 +3171,7 @@ function vSession(){
     const wu=warmCount(en.sets);
     h+='<div class="xfoot"><button class="btn btn-sm btn-ghost" onclick="G.addSet('+i+')">+ Set</button>'
       +(en.sets.length>1?'<button class="btn btn-sm btn-ghost" onclick="G.delSet('+i+')">- Set</button>':'')
-      +(ex.bw?'':'<button class="btn btn-sm btn-ghost" onclick="G.addWarmups('+i+')">'+(wu?'Re-ramp':'Warm-up ramp')+'</button>')
+      +(nw>0?'<button class="btn btn-sm btn-ghost" onclick="G.addWarmups('+i+')">'+(wu?'Re-ramp':'Warm-up ramp')+'</button>':'')
       +(wu?'<button class="btn btn-sm btn-ghost" onclick="G.clearWarmups('+i+')">Clear ramp</button>':'')
       +'</div>'
       +'<div class="xfoot2">'
@@ -3127,6 +3253,16 @@ function wireHolds(){
     b._holdStop=stop;
   });
   document.querySelectorAll('.chk').forEach(c=>c.onclick=()=>G.checkSet(+c.dataset.i,+c.dataset.k));
+  /* Tap the weight number to type what your rack actually has. The steppers only
+     walk that exercise's own grid, and real racks are not on it — a 2.5 kg-step
+     dumbbell rack cannot be reached on a 2 kg grid, nor a 7 or 11 kg bell on any
+     of them. The steppers stay for the common case; this is the escape hatch, and
+     a typed weight is the lifter's own measurement, so it is stored as typed. */
+  document.querySelectorAll('[data-wedit]').forEach(v=>{
+    const open=()=>{const p=v.dataset.wedit.split('-');G.weightEntry(+p[0],+p[1])};
+    v.onclick=open;
+    v.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open()}};
+  });
 }
 
 /* ================= RENDER: HISTORY ================= */
@@ -3151,7 +3287,7 @@ function vHist(){
         out+='<table class="htable"><tr><th colspan="2" style="color:var(--ink);font-size:12px">'+ex.n+'</th><th style="text-align:right">RIR</th><th style="text-align:right">VOL</th></tr>';
         en.sets.forEach((st,k)=>{const kd=kindOf(st),rv=setRirOf(st,en),vg=countsVol(st);
           out+='<tr><td style="color:var(--dim)">'+(kd?kd.s+' ':'')+'Set '+(k+1)+'</td>'
-            +'<td>'+(ex.bw?'BW':fw(st.w)+(exDb(en.id)?' ea':' '+wl()))+' × '+st.r+'</td>'
+            +'<td>'+loadLbl(ex,st.w)+' × '+st.r+'</td>'
             /* the effort you logged per set, not one number for the exercise */
             +'<td class="num" style="color:var(--dim)">'+(rv===null?'–':rv)+'</td>'
             +'<td class="num">'+(vg?loc(repLoad(en.id,st.w)*st.r):'<span style="color:var(--dim)">—</span>')+'</td></tr>'});
@@ -3290,7 +3426,7 @@ function vPlan(){
     days+='<div class="card" style="margin-bottom:10px"><div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px"><span style="font-family:Oswald,system-ui,sans-serif;font-weight:600;font-size:19px">'+d.label+'</span><span style="font-size:12px;color:var(--dim);font-weight:600">'+r.sub.toUpperCase()+'</span>'
     +'<button class="linklike" style="margin-left:auto;font-size:11.5px" onclick="G.openDayEdit(\''+d.rid+'\')">customize</button></div>'
     +r.ex.map(px=>{const ex=EXBY[px.id],sg=suggest(px.id);
-      return'<div class="plandex"><span>'+ex.n+'</span><b>'+ex.def.s+'×'+ex.def.min+'-'+ex.def.max+(ex.bw?' BW':' · start '+fw(sg.w)+(exDb(px.id)?' ea':''))+'</b></div>'}).join('')
+      return'<div class="plandex"><span>'+ex.n+'</span><b>'+ex.def.s+'×'+ex.def.min+'-'+ex.def.max+(isBwEx(ex)?' · '+loadLbl(ex,sg.w):' · start '+fw(sg.w)+(exDb(px.id)?' ea':''))+'</b></div>'}).join('')
     +'</div>';
   });
   return '<div class="hero" style="padding-top:2px"><div class="hero-kicker">THE PLAN</div><h1 class="hero-big" style="font-size:32px">'+sp.name+',<br>'+sp.days.length+' days a week.</h1>'
@@ -3566,9 +3702,7 @@ function sessionEditHTML(){
       const rv=(typeof st.rir==='number')?(''+st.rir):((typeof en.rir==='number')?'·':'–');
       h+='<div class="erow">'
         +'<span class="eidx">'+(si+1)+'</span>'
-        +(ex.bw
-          ?'<span class="eval">BW</span>'
-          :'<div class="stepbox"><button class="stepbtn" onclick="G.editBump('+ei+','+si+',\'w\',-1)" aria-label="less weight">-</button><span class="stepval">'+fw(st.w)+'<small>'+wl()+'</small></span><button class="stepbtn" onclick="G.editBump('+ei+','+si+',\'w\',1)" aria-label="more weight">+</button></div>')
+        +'<div class="stepbox"><button class="stepbtn" onclick="G.editBump('+ei+','+si+',\'w\',-1)" aria-label="less weight">-</button><span class="stepval">'+wCell(ex,st.w)+'</span><button class="stepbtn" onclick="G.editBump('+ei+','+si+',\'w\',1)" aria-label="more weight">+</button></div>'
         +'<div class="stepbox"><button class="stepbtn" onclick="G.editBump('+ei+','+si+',\'r\',-1)" aria-label="fewer reps">-</button><span class="stepval">'+st.r+'<small>'+repWord(ex)+'</small></span><button class="stepbtn" onclick="G.editBump('+ei+','+si+',\'r\',1)" aria-label="more reps">+</button></div>'
         +'<button class="ekind'+(kd?' kind kind-'+st.k:'')+'" onclick="G.editKind('+ei+','+si+')" aria-label="Change set type">'+(kd?kd.s:'S')+'</button>'
         +'<button class="erir'+(rv!=='–'?' on':'')+'" onclick="G.editRirMenu('+ei+','+si+')" aria-label="Effort on set '+(si+1)+': '+(rv==='–'?'not logged':rv+' reps in reserve')+'">'+rv+'</button>'
@@ -3889,7 +4023,7 @@ const G={
     if(wu)rows+=row('Clear the warm-up ramp',wu+' marked warm-up set'+(wu===1?'':'s')+' — your '+work+' working set'+(work===1?'':'s')+' stay','G.clearWarmups('+i+')');
     en.sets.forEach((st,k)=>{
       const kd=kindOf(st);
-      rows+=row('Remove set '+(k+1),(kd?kd.n+' · ':'')+(ex.bw?'bodyweight':fw(st.w)+' '+wl())+' × '+st.r+' '+repLower(ex)+(st.done?' · logged':' · not logged'),
+      rows+=row('Remove set '+(k+1),(kd?kd.n+' · ':'')+loadLbl(ex,st.w)+' × '+st.r+' '+repLower(ex)+(st.done?' · logged':' · not logged'),
         'G.delSetAt('+i+','+k+')',false,en.sets.length<=1);
     });
     rows+=row('Clear every set','Keeps '+ex.n+' in the session and starts one fresh set','G.clearSets('+i+')');
@@ -3931,22 +4065,71 @@ const G={
   bump(i,k,f,d){
     const en=sess.entries[i],st=en.sets[k];
     if(st.done){toast('Set already logged · untick to change');return}
-    if(f==='w'){const ex=EXBY[en.id];if(ex.bw)return;st.w=stepLoad(st.w,d,ex)}
+    if(f==='w'){const ex=EXBY[en.id];st.w=stepLoad(st.w,d,ex)}
     else st.r=Math.min(60,Math.max(0,st.r+d));
     /* surgical update: touch only this cell so hold-repeat cannot flash the page */
     const row=document.querySelector('[data-row="'+i+'-'+k+'"]');
     if(row){
       const wv=row.querySelector('[data-w]'),rv=row.querySelector('[data-r]');
-      if(wv)wv.innerHTML=fw(st.w)+'<small>'+wl()+(EXBY[en.id].db?' EA':'')+'</small>';
+      if(wv)wv.innerHTML=wCell(EXBY[en.id],st.w);
       if(rv)rv.innerHTML=st.r+'<small>'+repWord(EXBY[en.id])+'</small>';
     }else{
       rerender();
     }
   },
-  checkSet(i,k){
+  /* Type the weight you actually have. The steppers only walk this exercise's
+       own grid (`def.inc`), and a real rack is not on it: dumbbells come in 2 kg
+       steps on one rack and 2.5 kg on the next, plus odd 7/9/11 kg bells, and a
+       cable stack can be anything. Everything the engine PROPOSES still snaps to
+       a loadable grid; this is the lifter's own measurement, so it is stored
+       exactly as typed and never re-snapped. */
+    weightEntry(i,k){
+      const ex=EXBY[sess.entries[i].id],st=sess.entries[i].sets[k];
+      const bwf=isBwEx(ex),inc=gridOf(ex.def&&ex.def.inc);
+      const chip=(lbl,val,hint)=>'<button class="chip'+(Math.abs(st.w-val)<0.001?' on':'')+'" onclick="G.weightSet('+i+','+k+','+val+')" title="'+hint+'">'+lbl+'</button>';
+      let chips='';
+      if(bwf){
+        chips=chip('Bodyweight',0,'No added weight and no assistance')
+          +chip('+'+fw(inc),inc,'Add '+fw(inc)+' '+wl()+' to the belt')
+          +chip('-'+fw(inc),-inc,'Take '+fw(inc)+' '+wl()+' of help');
+      }
+      const nl=nextLoad(ex.id);
+      if(Math.abs(nl.w-st.w)>0.001)chips+=chip((nl.w>0?'+':'')+fw(nl.w),nl.w,'The load the coach recommends');
+      const pv=prevSum(ex.id,todayISO());
+      if(pv&&pv.e.sets[k]&&Math.abs(pv.e.sets[k].w-st.w)>0.001)chips+=chip(fw(pv.e.sets[k].w),pv.e.sets[k].w,'What you did on this set last session');
+      openModal('<div class="grab"></div><h2>'+esc(ex.n)+'</h2>'
+        +'<div class="shsub">Set '+(k+1)+' of '+sess.entries[i].sets.length+' · type any weight'+wl()+' — you are not limited to the steppers\u2019 steps.</div>'
+        +'<input class="searchbox" id="wq" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="done" value="'+fw(st.w)+'" onkeydown="if(event.key===\'Enter\')G.weightSet('+i+','+k+')">'
+        +(bwf?'<div class="shsub" style="margin-top:8px">0 is <b>bodyweight</b>. A minus number is <b>assistance</b> — -20 records a band or assist machine giving you 20 '+wl()+' of help.</div>':'')
+        +(chips?'<div class="chiprow" style="margin-top:12px">'+chips+'</div>':'')
+        +'<button class="btn btn-volt btn-block" style="margin-top:14px" onclick="G.weightSet('+i+','+k+')">Set weight</button>'
+        +'<button class="btn btn-ghost btn-block" style="margin-top:8px" onclick="G.closeModal()">Cancel</button>');
+      const inp=document.getElementById('wq');
+      if(inp){inp.focus();try{inp.setSelectionRange(0,String(inp.value).length)}catch(e){}}
+    },
+    weightSet(i,k,v){
+      const en=sess.entries[i],st=en.sets[k],ex=EXBY[en.id];
+      if(v===undefined||v===null){
+        const inp=document.getElementById('wq');
+        if(!inp)return;
+        v=parseFloat(String(inp.value).trim().replace(',','.'));
+      }
+      if(!isFinite(v)){toast('Type a number');return}
+      /* A barbell cannot weigh less than nothing, so assistance is only
+         meaningful on a bodyweight lift. */
+      if(!isBwEx(ex)&&v<0)v=0;
+      if(v>999)v=999;
+      st.w=Math.round(v*100)/100;     /* stored as typed — see THE PLATE GRID */
+      closeModal();rerender();
+      toast(isBwEx(ex)?(st.w>0?'+'+fw(st.w)+' '+wl()+' added':st.w===0?'Bodyweight':'Assist '+fw(-st.w)+' '+wl()):fw(st.w)+' '+wl());
+    },
+    checkSet(i,k){
     const en=sess.entries[i],st=en.sets[k],ex=EXBY[en.id];
     if(st.done){st.done=false;delete st.ts;rerender();return}
-    if(!ex.bw&&st.w<=0){toast('Add a load first');return}
+    /* A bodyweight lift is complete at 0 — that IS bodyweight, and asking for a
+       load first is what made a pull-up unloggable for somebody who cannot yet
+       do one. Only a lift that must carry external load needs one. */
+    if(!isBwEx(ex)&&st.w<=0){toast('Add a load first');return}
     if(st.r<=0){toast('Log some reps');return}
     st.done=true;st.ts=Date.now();
     const pv=prevSum(en.id,todayISO());
@@ -4054,16 +4237,20 @@ const G={
   addWarmups(i){
     const en=sess&&sess.entries[i];if(!en)return;
     const ex=EXBY[en.id];
-    if(ex.bw){toast('Bodyweight lift — no ramp to calculate');return}
-    /* re-ramping replaces the ramp rather than stacking a second one; the working
-       sets and their logged effort are untouched */
-    en.sets=en.sets.filter(s=>!isWarm(s));
-    const work=volSets(en.sets).map(s=>s.w).filter(w=>w>0);
+    /* re-ramping replaces the ramp rather than stacking a second one, and the
+       decision is made BEFORE anything is written, so a refused ramp cannot
+       leave the session half-changed. */
+    const kept=en.sets.filter(s=>!isWarm(s));
+    const work=volSets(kept).map(s=>s.w).filter(w=>w>0);
     const top=work.length?Math.max.apply(null,work):nextLoad(en.id).w;
-    if(!(top>0)){toast('Add a working load first');return}
+    /* a ramp needs a working load to ramp TO — bodyweight or assisted work has
+       nothing underneath it. That is what the old `ex.bw` guard was really about;
+       it keyed off the flag instead of the load, so a weighted pull-up lost its
+       ramp and a light barbell kept a normal one. */
+    if(!(top>0)){toast(isBwEx(ex)?'Bodyweight lift — no ramp to calculate':'Add a working load first');return}
     const ramp=warmupRamp(top,ex.def.inc);
     if(!ramp.length){toast('Load too light to ramp');return}
-    en.sets=ramp.map(r=>({w:r.w,r:r.r,k:'wu',done:false})).concat(en.sets);
+    en.sets=ramp.map(r=>({w:r.w,r:r.r,k:'wu',done:false})).concat(kept);
     rerender();
     toast(ramp.length+' warm-up sets · excluded from volume and PRs');
   },
@@ -4419,7 +4606,7 @@ saveSess();
 /* Auto cache-bust: if a newer build is deployed, this install picks it up on
    the next open. APP_BUILD must be bumped whenever index.html ships, otherwise
    a cached home-screen copy keeps running the old code. */
-const APP_BUILD='2026-08-25r';
+const APP_BUILD='2026-08-25s';
 try{
   const seen=localStorage.getItem('forge_build');
   if(seen && seen!==APP_BUILD){
