@@ -4605,11 +4605,25 @@ saveSess();
 /* Auto cache-bust: if a newer build is deployed, this install picks it up on
    the next open. APP_BUILD must be bumped whenever index.html ships, otherwise
    a cached home-screen copy keeps running the old code. */
-const APP_BUILD='2026-09-29a';
+const APP_BUILD='2026-09-29b';
 try{
   const seen=localStorage.getItem('forge_build');
   if(seen && seen!==APP_BUILD){
     localStorage.setItem('forge_build',APP_BUILD);
+    /* HARD self-heal for a stale install: a stuck phone serves last build's
+       cached app until its service worker is forced out. Unregister every SW
+       and wipe every cache so the next load is guaranteed fresh (network),
+       not the old SW serving an old shell. */
+    try{
+      if('serviceWorker' in navigator){
+        navigator.serviceWorker.getRegistrations().then(function(regs){
+          regs.forEach(function(r){try{r.unregister();}catch(e){}});
+          if('caches' in window){
+            caches.keys().then(function(keys){keys.forEach(function(k){caches.delete(k);});});
+          }
+        }).catch(function(){});
+      }
+    }catch(e){}
     /* accept either token: latest.html links ?fresh=latest, older links use
        ?fresh=1 — matching only one of them cost an extra redirect hop */
     if(!/[?&]fresh=/.test(location.search)){location.replace(location.pathname+'?fresh=1');}
