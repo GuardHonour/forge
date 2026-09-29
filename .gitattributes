@@ -1,0 +1,5 @@
+# Keep the app's line endings stable. index.html is the entire application and
+# sw.js caches it by build tag; a silent CRLF/LF flip makes an unchanged file
+# look modified and has already caused one false "unpushed work" alarm.
+* text=auto eol=lf
+*.png binary

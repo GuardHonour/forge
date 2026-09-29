@@ -1,0 +1,1041 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FORGE technique demos — v4.1 flash vs glm5.3 flash</title>
+<style>
+:root{--bg:#08090b;--bg2:#0a0b0d;--card:#14161a;--card2:#1a1d23;--card3:#20242b;
+--line:#242830;--line2:#30353e;--ink:#f2f4f7;--mut:#98a1ac;--dim:#5f6873;--volt:#cbf33a;--hot:#ff6b4a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 Archivo,system-ui,sans-serif}
+header{max-width:1060px;margin:0 auto;padding:26px 16px 8px}
+h1{font-size:21px;margin:0 0 6px;letter-spacing:.02em}
+h1 b{color:var(--volt)}
+header p{color:var(--mut);font-size:12.5px;margin:4px 0}
+.bar{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 92%,transparent);
+backdrop-filter:blur(6px);border-bottom:1px solid var(--line);max-width:1060px;margin:0 auto;
+padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+button{background:var(--volt);color:#12150a;border:0;border-radius:9px;padding:8px 16px;
+font:700 12px Archivo,system-ui;letter-spacing:.08em;cursor:pointer}
+input[type=range]{flex:1;min-width:160px;accent-color:var(--volt)}
+.ms{font:700 12px Archivo,system-ui;color:var(--mut);min-width:120px;font-variant-numeric:tabular-nums}
+.legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--dim);letter-spacing:.06em;font-weight:700}
+.sw{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+main{max-width:1060px;margin:0 auto;padding:14px 16px 60px}
+h2{font-size:13px;letter-spacing:.18em;color:var(--volt);margin:26px 0 10px;border-bottom:1px solid var(--line);padding-bottom:7px}
+.excard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
+.exhead{display:flex;align-items:baseline;gap:10px;margin-bottom:9px}
+.exname{font-weight:700;font-size:14.5px}
+.excat{margin-left:auto;font-size:9.5px;font-weight:700;letter-spacing:.12em;color:var(--dim)}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:640px){.pair{grid-template-columns:1fr}}
+.cellwrap{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:8px 8px 6px}
+.celltag{font-size:10px;font-weight:700;letter-spacing:.09em;margin-bottom:6px;color:var(--dim)}
+.celltag.a{color:var(--mut)}
+.celltag.b{color:var(--volt)}
+.cellwrap svg{display:block;width:100%;height:auto;background:color-mix(in srgb,var(--card3) 55%,transparent);border-radius:8px}
+.cellmeta{font-size:9.5px;color:var(--dim);margin-top:6px;letter-spacing:.05em;min-height:24px}
+.setup{font-size:11px;color:var(--mut);border-top:1px dashed var(--line);margin-top:8px;padding-top:7px}
+.setup b{color:var(--ink);font-size:9.5px;letter-spacing:.12em;margin-right:8px}
+.foot{color:var(--dim);font-size:11px;max-width:1060px;margin:0 auto;padding:0 16px 40px}
+</style></head><body>
+<header><h1>FORGE technique demos — <b>v4.1 flash</b> vs <b>glm5.3 flash</b></h1>
+<p>The same shared vector engine (one skeleton, two-link IK, one 3140&thinsp;ms tempo) animating two independently authored 48-demo sets, in lockstep. Left: the set shipped in <code>index.html</code>, authored in an earlier session. Right: a set authored from scratch in this session &#8212; its own poses, cues and phase verbs.</p>
+<p><b>Provenance, read from the session log:</b> this session selected <code>z-ai/glm-5.3-flash</code> at 15:59, and that model served every request from 16:00 to 17:01 &#8212; the window in which the new set was written. The session's model was then switched to <code>deepseek/deepseek-v4.1-flash</code> at 21:50, <i>after</i> this set was finished. So the right-hand column is glm-5.3-flash's work; the 3D sandbox built later in the same session is deepseek-v4.1-flash's. The earlier session that authored the shipped set carries no model-selection record, so its author is not verifiable from the transcript.</p>
+<p>Scrub the bar to freeze both athletes at any point in the rep; both cells always show the same millisecond. Space toggles play.</p></header>
+<div class="bar"><button id="pp">PAUSE</button><input id="scrub" type="range" min="0" max="3140" value="0"><span class="ms" id="ms">0ms / 3140ms</span>
+<span class="legend"><span><span class="sw" style="background:var(--mut)"></span>shipped set (earlier session)</span>
+<span><span class="sw" style="background:var(--volt)"></span>glm-5.3 flash, authored 16:59</span></span></div>
+<main id="grid"></main>
+<div class="foot">Engine extracted verbatim from <code>index.html</code>; both sets are compiled by its own <code>buildAnims()</code>. Filmstrip sheets of the new set: FORGE-motion-v5-*.png (chest, back, shoulders, arms, legs, core).</div>
+<script>const D2R=Math.PI/180;
+const DEG=d=>d*D2R;
+const nf=v=>Math.round(v*10)/10;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const smooth=t=>t*t*(3-2*t);
+
+/* CSS variables are read once per draw so all six themes work, with fallbacks so
+   a missing variable can never emit an empty colour into the SVG. */
+function cssVar(name,fb){
+  let v='';
+  try{v=getComputedStyle(document.documentElement).getPropertyValue(name).trim()}catch(e){}
+  return v||fb;
+}
+const ACC=()=>cssVar('--volt','#cbf33a');
+const DIMC=()=>cssVar('--dim','#5f6873');
+const L2C=()=>cssVar('--line2','#30353e');
+const INKC=()=>cssVar('--ink','#f2f4f7');
+const BGC=()=>cssVar('--bg2','#0a0b0d');
+/* Apparatus is dimmer than the body but must still be legible: the first pass sat
+   so far into the background that benches and pads read as empty space. */
+const PADC=()=>'color-mix(in srgb,var(--line2) 92%,transparent)';
+const FRAMEC=()=>'color-mix(in srgb,var(--dim) 62%,transparent)';
+
+/* ---------- drawing helpers: every scene and the body share these, which is
+   exactly what keeps the illustration style identical exercise to exercise ---- */
+const style=o=>{let s='';for(const k in o)s+=k+':'+o[k]+';';return s};
+const ln=(a,b,s)=>'<line x1="'+nf(a[0])+'" y1="'+nf(a[1])+'" x2="'+nf(b[0])+'" y2="'+nf(b[1])+'" style="'+s+'" stroke-linecap="round"/>';
+const cir=(p,r,s)=>'<circle cx="'+nf(p[0])+'" cy="'+nf(p[1])+'" r="'+nf(r)+'" style="'+s+'"/>';
+const rect=(x,y,w,h,r,s)=>'<rect x="'+nf(x)+'" y="'+nf(y)+'" width="'+nf(w)+'" height="'+nf(h)+'" rx="'+nf(r)+'" style="'+s+'"/>';
+
+/* ---------- THE ONE SKELETON (shared by all 48 demos) ----------
+   Derived from a 180 cm athlete scaled to this canvas, not guessed:
+     hip joint 95 cm, shoulder joint 145 cm, wrist 85 cm, knee 50 cm, ankle 8 cm,
+     head centre 166 cm, head half-height 11.5 cm.
+   Scaled by 130/180 = 0.722 that gives the numbers below. Getting these right is
+   what makes the limbs bend like limbs and stops a hand target from being
+   unreachable — the first draft had a torso 8 units too long and a forearm 5 too
+   long, which alone made 742 authored hand and foot positions impossible. */
+const BONE={head:8.4,neck:6.5,torso:36,upper:24,fore:19.5,thigh:32.5,shin:30.3,foot:9};
+const GY=182;                                   /* the floor */
+const HIPY=GY-(BONE.thigh+BONE.shin);           /* hip with straight legs ~119 */
+
+/* Near/far separation used to fake depth in a side view and shoulder width in a
+   front view. Keyed by VIEW only, so every side view is framed identically. */
+const VIEW={side:{sh:2.8,hip:2.4},front:{sh:9.5,hip:5.5}};
+
+/* ---------- TWO-LINK INVERSE KINEMATICS ----------
+   Places an elbow or a knee so that |a->joint| = l1 and |joint->b| = l2, choosing
+   between the two mirror solutions by which side the pole points to. The target
+   is clamped into reach, so a pose can never silently produce a hyperextended
+   limb or a NaN. The clamped case is reported via the returned `over` flag so a
+   test can catch an unreachable pose instead of it becoming a visual bug. */
+function ik(a,b,l1,l2,poleDeg){
+  const dx=b[0]-a[0],dy=b[1]-a[1];
+  let d=Math.hypot(dx,dy);
+  if(!isFinite(d)||d<1e-6)d=1e-6;
+  const dmax=l1+l2-0.02, dmin=Math.abs(l1-l2)+0.02;
+  const over=(d>dmax+1e-6)||(d<dmin-1e-6);
+  const dc=Math.min(dmax,Math.max(dmin,d));
+  const base=Math.atan2(dy,dx);
+  let cosA=(l1*l1+dc*dc-l2*l2)/(2*l1*dc);
+  cosA=Math.min(1,Math.max(-1,cosA));
+  const A=Math.acos(cosA);
+  const j1=[a[0]+Math.cos(base+A)*l1,a[1]+Math.sin(base+A)*l1];
+  const j2=[a[0]+Math.cos(base-A)*l1,a[1]+Math.sin(base-A)*l1];
+  const pr=DEG(poleDeg),px=Math.cos(pr),py=Math.sin(pr);
+  const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;
+  const s1=(j1[0]-mx)*px+(j1[1]-my)*py;
+  const s2=(j2[0]-mx)*px+(j2[1]-my)*py;
+  return{j:s1>=s2?j1:j2,over:over};
+}
+
+/* ---------- POSE ----------
+   A pose names: pelvis position, spine direction, head direction, the two hand
+   positions and the two foot positions. Limb lengths and joint bend directions
+   belong to the EXERCISE, not the phase, and come from the demo definition. */
+/* Angles are interpolated along the SHORTEST path. A plain numeric lerp is fine
+   for a pose that barely rotates, but a spine going from 180 to -151 degrees (a
+   bridge or a hip thrust lowering) would otherwise spin the athlete forwards
+   through zero and back, folding the body inside out halfway through the rep. */
+function lerpAng(a,b,u){
+  let d=((b-a+540)%360)-180;
+  return a+d*u;
+}
+function mixPose(a,b,u){
+  const m=(ka,kb)=>[lerp(ka[0],kb[0],u),lerp(ka[1],kb[1],u)];
+  return{
+    hip:m(a.hip,b.hip),
+    torso:lerpAng(a.torso,b.torso,u),
+    head:lerpAng(a.head,b.head,u),
+    wrN:m(a.wrN,b.wrN),wrF:m(a.wrF,b.wrF),
+    anN:m(a.anN,b.anN),anF:m(a.anF,b.anF),
+    toeN:lerp(a.toeN,b.toeN,u),toeF:lerp(a.toeF,b.toeF,u)
+  };
+}
+/* Resolve a pose into every drawable joint.
+   ONE inverse-kinematics solve per limb, taken from the JOINT CENTRE. The near/far
+   separation is applied afterwards, as a rigid shift while drawing — which is how a
+   2D illustration fakes depth. It must not change what a limb can reach: on the
+   first pass the offset was fed into the solver, so a perfectly symmetric two-hand
+   grip came out reachable on the near side and impossible on the far side, which is
+   what produced most of the unreachable-limb reports. */
+function solve(pose,d,demo){
+  const over=[];
+  const V=VIEW[demo.view]||VIEW.side;
+  const tr=DEG(pose.torso);
+  const nx=-Math.sin(tr),ny=Math.cos(tr);
+  const hip=pose.hip;
+  const sh=[hip[0]+Math.cos(tr)*BONE.torso,hip[1]+Math.sin(tr)*BONE.torso];
+  const sx=nx*V.sh, sy=ny*V.sh, hx=nx*V.hip, hy=ny*V.hip;
+  const hd=DEG(pose.head);
+  const neck=[sh[0]+Math.cos(hd)*BONE.neck,sh[1]+Math.sin(hd)*BONE.neck];
+  const head=[neck[0]+Math.cos(hd)*BONE.head*0.94,neck[1]+Math.sin(hd)*BONE.head*0.94];
+  const eN=ik(sh,pose.wrN,BONE.upper,BONE.fore,demo.poleElbN); if(eN.over)over.push('elbN');
+  const eF=ik(sh,pose.wrF,BONE.upper,BONE.fore,demo.poleElbF); if(eF.over)over.push('elbF');
+  const kN=ik(hip,pose.anN,BONE.thigh,BONE.shin,demo.poleKneeN); if(kN.over)over.push('knN');
+  const kF=ik(hip,pose.anF,BONE.thigh,BONE.shin,demo.poleKneeF); if(kF.over)over.push('knF');
+  const mv=(p,s)=>[p[0]+s[0],p[1]+s[1]];
+  const S=[sx,sy],Sm=[-sx,-sy],H=[hx,hy],Hm=[-hx,-hy];
+  const toN=mv([pose.anN[0]+Math.cos(DEG(pose.toeN))*BONE.foot,pose.anN[1]+Math.sin(DEG(pose.toeN))*BONE.foot],H);
+  const toF=mv([pose.anF[0]+Math.cos(DEG(pose.toeF))*BONE.foot,pose.anF[1]+Math.sin(DEG(pose.toeF))*BONE.foot],Hm);
+  return{
+    hip:hip,sh:sh,torso:pose.torso,
+    shN:mv(sh,S),shF:mv(sh,Sm),hpN:mv(hip,H),hpF:mv(hip,Hm),
+    neck:neck,head:head,
+    elN:mv(eN.j,S),wrN:mv(pose.wrN,S),
+    elF:mv(eF.j,Sm),wrF:mv(pose.wrF,Sm),
+    knN:mv(kN.j,H),anN:mv(pose.anN,H),toN:toN,
+    knF:mv(kF.j,Hm),anF:mv(pose.anF,Hm),toF:toF,
+    over:over
+  };
+}
+/* Normalise the authoring shorthand: `wr`/`an` set both sides at once. A pose may
+   also override the foot angle, which a calf raise needs: the ball of the foot
+   stays on the step while the heel travels. */
+function normPose(p){
+  return{
+    hip:p.hip,torso:p.torso,head:p.head===undefined?p.torso-180:p.head,
+    wrN:p.wrN||p.wr,wrF:p.wrF||p.wr,
+    anN:p.anN||p.an,anF:p.anF||p.an,
+    toeN:p.toeN,toeF:p.toeF
+  };
+}
+
+/* ---------- TEMPO: identical for all 48 ---------- */
+const TEMPO=[['ecc',1500],['hold',320],['con',1000],['hold',320]];
+const CYCLE=TEMPO.reduce((a,x)=>a+x[1],0);
+/* t in [0,1) -> which phase and how far from home toward away (mix 0..1) */
+function stageAt(t){
+  let u=t-Math.floor(t);
+  if(!isFinite(u)||u<0)u=0;
+  let ms=u*CYCLE,i=0;
+  while(i<TEMPO.length-1&&ms>=TEMPO[i][1]){ms-=TEMPO[i][1];i++}
+  const f=Math.min(1,Math.max(0,ms/TEMPO[i][1]));
+  if(i===0)return{mix:smooth(f),ph:'away'};
+  if(i===1)return{mix:1,ph:'holdAway'};
+  if(i===2)return{mix:1-smooth(f),ph:'home'};
+  return{mix:0,ph:'holdHome'};
+}
+
+/* ---------- APPARATUS ----------
+   A deliberately small kit of parts, reused by every scene, so a pad looks like a
+   pad and a cable stack looks like a cable stack throughout the whole library. */
+function padAt(cx,cy,len,th,ang){
+  return '<g transform="translate('+nf(cx)+' '+nf(cy)+') rotate('+nf(ang)+')">'
+    +rect(-len/2,-th/2,len,th,th/2,style({fill:PADC(),stroke:L2C(),'stroke-width':1.6}))
+    +'</g>';
+}
+function post(x,yTop,yBot,w){
+  return rect(x-(w||3)/2,yTop,(w||3),yBot-yTop,2,style({fill:L2C(),opacity:.7}));
+}
+function frameRect(x,y,w,h,r){
+  return rect(x,y,w,h,r||4,style({fill:FRAMEC(),stroke:L2C(),'stroke-width':2.2}));
+}
+function groundLine(y,from,to){
+  return ln([from===undefined?0:from,y],[to===undefined?200:to,y],style({stroke:DIMC(),'stroke-width':3,opacity:.55}));
+}
+function plate(p,r){
+  return cir(p,r,style({fill:ACC(),opacity:.9}))+cir(p,r*0.42,style({fill:BGC(),opacity:.55}));
+}
+/* Barbell, drawn the conventional way: a bar with a plate at each end. */
+function barAt(p,half,thick){
+  const h=half||30,w=thick||4.2;
+  let s=ln([p[0]-h,p[1]],[p[0]+h,p[1]],style({stroke:ACC(),'stroke-width':w}));
+  s+=plate([p[0]-h-1,p[1]],6)+plate([p[0]+h+1,p[1]],6);
+  return s;
+}
+/* A bar with no plates: a lat pulldown or a cable bar carries its load through the
+   cable, so drawing plates on it would be wrong. */
+function barPlain(p,half,thick){
+  const h=half||26,w=thick||3.6;
+  return ln([p[0]-h,p[1]],[p[0]+h,p[1]],style({stroke:ACC(),'stroke-width':w}))
+    +ln([p[0]-h,p[1]-5],[p[0]-h,p[1]+5],style({stroke:ACC(),'stroke-width':3}))
+    +ln([p[0]+h,p[1]-5],[p[0]+h,p[1]+5],style({stroke:ACC(),'stroke-width':3}));
+}
+/* Dumbbell, drawn end-on at an angle so it reads as a bell in the hand. */
+function dbAt(p,ang,sc){
+  const k=sc||1,a=ang===undefined?-24:ang;
+  return '<g transform="translate('+nf(p[0])+' '+nf(p[1])+') rotate('+nf(a)+') scale('+k+')">'
+    +ln([-7,0],[7,0],style({stroke:DIMC(),'stroke-width':3.4}))
+    +rect(-11,-5,4.5,10,1.6,style({fill:ACC(),opacity:.92}))
+    +rect(6.5,-5,4.5,10,1.6,style({fill:ACC(),opacity:.92}))
+    +'</g>';
+}
+/* Cable stack + pulley, so every cable exercise shows where the load comes from. */
+function stackAt(x,base,top){
+  let s=frameRect(x-13,top,26,base-top,5);
+  for(let y=top+9;y<base-8;y+=7)s+=ln([x-9,y],[x+9,y],style({stroke:L2C(),'stroke-width':1.6,opacity:.75}));
+  return s;
+}
+function pulley(p){
+  return cir(p,4,style({fill:FRAMEC(),stroke:L2C(),'stroke-width':1.8}));
+}
+function cableTo(a,b){
+  return ln(a,b,style({stroke:DIMC(),'stroke-width':1.6,opacity:.85}));
+}
+/* A plate-loaded machine: a weight stack, the upright beside it, a base plate, the
+   seat under the glutes, and the pad the athlete is braced against. Deliberately
+   compact — an earlier version outlined a frame around the whole canvas, which read
+   as a picture frame with a person inside it rather than as a machine. */
+function machineAt(P,o){
+  o=o||{};
+  const px=P.hip[0]+(o.postDx===undefined?-48:o.postDx);
+  const seatX=P.hip[0]+(o.seatDx===undefined?8:o.seatDx);
+  const seatY=P.hip[1]+9;
+  return stackAt(px,GY,104)
+    +frameRect(px+26,74,14,GY-74,4)
+    +rect(P.hip[0]-34,GY-9,88,9,3,style({fill:PADC(),stroke:L2C(),'stroke-width':1.6}))
+    +post(seatX,seatY+7,GY,4)+padAt(seatX,seatY,42,11,0)
+    +(o.chest?chestPad(P,42,13):backPad(P,o.padLen||46,12))
+    +groundLine(GY);
+}
+/* The pad the athlete's back is pinned against, drawn FROM the spine line so it
+   stays behind the back at every point in the rep. +normal is the front of the
+   body, so the back pad sits at -normal. */
+function backPad(P,len,off){
+  const tr=DEG(P.torso),nx=-Math.sin(tr),ny=Math.cos(tr),o=off===undefined?11:off;
+  const cx=(P.hip[0]+P.sh[0])/2-nx*o, cy=(P.hip[1]+P.sh[1])/2-ny*o;
+  return padAt(cx,cy,len||46,11,P.torso);
+}
+/* The pad the athlete's chest is pressed into — the mirror of backPad. */
+function chestPad(P,len,off){
+  const tr=DEG(P.torso),nx=-Math.sin(tr),ny=Math.cos(tr),o=off===undefined?11:off;
+  const cx=(P.hip[0]+P.sh[0])/2+nx*o, cy=(P.hip[1]+P.sh[1])/2+ny*o;
+  return padAt(cx,cy,len||40,11,P.torso);
+}
+
+/* ---------- SCENES ----------
+   Each returns the apparatus split into what sits behind the athlete and what
+   sits in front of them, so the body can be sandwiched correctly. Everything is
+   derived from the athlete's own joints wherever it can be, which stops the
+   equipment from floating away from the body. */
+const SCENES={
+  floor:()=>({back:groundLine(GY),front:''}),
+
+  /* Flat bench, positioned from the athlete's own spine line. */
+  benchFlat:(P)=>({back:padAt((P.hip[0]+P.sh[0])/2,(P.hip[1]+P.sh[1])/2+7,Math.abs(P.hip[0]-P.sh[0])+30,10,0)
+    +post(P.hip[0]+8,P.sh[1]+12,GY,5)+post(P.sh[0]-6,P.sh[1]+12,GY,5)
+    +groundLine(GY),front:''}),
+
+  benchIncline:(P)=>{
+    const cx=(P.hip[0]+P.sh[0])/2,cy=(P.hip[1]+P.sh[1])/2;
+    return{back:padAt(cx,cy+7,50,10,P.torso)+post(cx+6,cy+14,GY,5)+post(cx-14,cy+10,GY,5)
+      +padAt(P.hip[0]+18,P.hip[1]+10,30,10,0)+groundLine(GY),front:''};
+  },
+
+  benchUpright:(P)=>{
+    const cx=(P.hip[0]+P.sh[0])/2,cy=(P.hip[1]+P.sh[1])/2;
+    return{back:padAt(cx-2,cy+7,50,10,P.torso)+padAt(P.hip[0]+20,P.hip[1]+10,30,10,0)
+      +post(cx,cy+16,GY,5)+post(P.hip[0]+20,P.hip[1]+16,GY,5)+groundLine(GY),front:''};
+  },
+
+  /* Squat rack: two uprights + J-hooks, placed behind the shoulder line. */
+  rack:(P)=>{
+    const x=P.sh[0];
+    return{back:frameRect(x+26,24,7,GY-24,3)+frameRect(x-46,24,7,GY-24,3)
+      +ln([x+20,x+62],[P.sh[1]+6,P.sh[1]+6],style({stroke:L2C(),'stroke-width':3,opacity:.8}))
+      +groundLine(GY),front:''};
+  },
+
+  /* Overhead bar pinned to the HANDS, so the grip can never float off it. */
+  pullupBar:(P)=>{const y=P.wrN[1];
+    return{back:ln([P.wrN[0]-40,y],[P.wrN[0]+46,y],style({stroke:L2C(),'stroke-width':4.5}))
+      +post(P.wrN[0]-36,8,y,5)+post(P.wrN[0]+42,8,y,5)+groundLine(GY,0,P.wrN[0]-30),front:''}},
+
+  /* Low bar for an inverted row, again pinned to the hands. */
+  lowBar:(P)=>{const y=P.wrN[1];
+    return{back:ln([P.wrN[0]-26,y],[P.wrN[0]+46,y],style({stroke:L2C(),'stroke-width':4.5}))
+      +post(P.wrN[0]-22,y,GY,5)+post(P.wrN[0]+42,y,GY,5)+groundLine(GY),front:''}},
+
+  /* Parallel bars: the near bar sits under the hands, the far one is offset forward
+     and dimmed. Drawing only one long rail at hip height made the whole demo read as
+     an athlete sitting on a bench, with the legs passing through the gap. */
+  dipBars:(P)=>{const y=P.wrN[1],x=P.wrN[0];
+    return{back:ln([x-14,y],[x+16,y],style({stroke:L2C(),'stroke-width':5}))
+      +post(x-10,y,GY,5)+post(x+12,y,GY,5)
+      +ln([x+22,y+9],[x+50,y+9],style({stroke:L2C(),'stroke-width':4,opacity:.6}))
+      +post(x+26,y+9,GY,4)+groundLine(GY),front:''}},
+
+  /* Cable stack behind, high or low pulley, cable drawn to the hands. */
+  cableHigh:(P)=>({back:stackAt(172,GY,58)+pulley([172,50])
+    +cableTo([172,50],P.wrN)+cableTo([172,50],P.wrF)+groundLine(GY),front:''}),
+  cableLow:(P)=>({back:stackAt(172,GY,96)+pulley([172,120])
+    +cableTo([172,120],P.wrN)+groundLine(GY),front:''}),
+  cableFace:(P)=>({back:stackAt(172,GY,74)+pulley([172,84])
+    +cableTo([172,84],P.wrN)+groundLine(GY),front:''}),
+  cableDual:(P)=>({back:stackAt(22,GY,74)+pulley([22,84])+cableTo([22,84],P.wrN)
+    +stackAt(178,GY,74)+pulley([178,84])+cableTo([178,84],P.wrF)+groundLine(GY),front:''}),
+
+  /* Plate-loaded machines: one outlined frame, a back pad from the spine, a seat
+     under the glutes, and a handle or lever at the hands. */
+  machinePress:(P)=>({back:machineAt(P,{padLen:46})
+    ,front:ln([P.wrN[0]+9,P.wrN[1]-10],[P.wrN[0]+9,P.wrN[1]+10],style({stroke:L2C(),'stroke-width':5}))}),
+
+  machineOHP:(P)=>({back:machineAt(P,{padLen:48})
+    ,front:ln([P.wrN[0]+9,P.wrN[1]-10],[P.wrN[0]+9,P.wrN[1]+10],style({stroke:L2C(),'stroke-width':5}))}),
+
+  machineRow:(P)=>({back:machineAt(P,{chest:true,padLen:42})
+    ,front:ln([P.wrN[0]+9,P.wrN[1]-10],[P.wrN[0]+9,P.wrN[1]+10],style({stroke:L2C(),'stroke-width':5}))}),
+
+  pecDec:(P)=>({back:machineAt(P,{padLen:46})
+    ,front:ln([P.wrN[0]+7,P.wrN[1]-10],[P.wrN[0]+7,P.wrN[1]+10],style({stroke:L2C(),'stroke-width':5}))}),
+
+  /* Preacher bench: the pad the upper arms are locked into, plus its post. */
+  preacher:()=>({back:padAt(122,120,48,11,-28)+frameRect(136,124,15,GY-124,4)
+    +padAt(100,146,44,11,0)+groundLine(GY),front:''}),
+
+  /* Bench behind the athlete — the rear foot of a split squat rests on it. */
+  benchBehind:()=>({back:padAt(62,148,48,10,0)+post(46,153,GY,5)+post(78,153,GY,5)+groundLine(GY),front:''}),
+
+  /* Bench under the shoulders only — a hip thrust, hips free to travel. */
+  benchShoulder:(P)=>({back:padAt(P.sh[0]+2,157,56,10,0)+post(P.sh[0]+18,157,GY,5)
+    +post(P.sh[0]-14,157,GY,5)+groundLine(GY),front:''}),
+
+  /* Flat bench taking one hand and one knee, the other arm free to row. */
+  benchRow:()=>({back:padAt(104,150,86,11,0)+post(72,156,GY,5)+post(136,156,GY,5)+groundLine(GY),front:''}),
+
+  /* Sled press: the inclined back pad, the rails, and the platform the feet drive.
+     The platform is pinned to the soles, so it can never drift off the feet. */
+  legPress:(P)=>{
+    /* the platform is drawn perpendicular to the shin and pinned to the sole */
+    const a=Math.atan2(P.anN[1]-P.knN[1],P.anN[0]-P.knN[0])*180/Math.PI;
+    return{back:backPad(P,56,13)
+      +post(P.hip[0]+26,P.hip[1]+10,GY,6)
+      +rect(P.hip[0]-26,GY-12,116,12,3,style({fill:PADC(),stroke:L2C(),'stroke-width':1.8}))
+      +groundLine(GY)
+      ,front:'<g transform="translate('+nf(P.anN[0])+' '+nf(P.anN[1])+') rotate('+nf(a+90)+')">'
+        +rect(-30,-7,60,14,3,style({fill:PADC(),stroke:L2C(),'stroke-width':2}))
+        +ln([0,-7],[0,7],style({stroke:ACC(),'stroke-width':5}))+'</g>'};
+  },
+
+  /* Leg extension: seat, back pad, and the lever arm with its roller on the shin. */
+  legExt:(P)=>({back:backPad(P,48,12)+padAt(P.hip[0]+6,P.hip[1]+9,44,11,0)
+    +post(P.hip[0]+6,P.hip[1]+14,GY,4)+post(P.hip[0]-16,P.hip[1]+12,GY,4)+groundLine(GY)
+    ,front:ln([P.knN[0]-10,P.knN[1]+4],P.anN,style({stroke:L2C(),'stroke-width':4.5}))
+      +cir(P.anN,6,style({fill:PADC(),stroke:L2C(),'stroke-width':1.8}))}),
+
+  /* Lying leg curl: prone bench plus the roller behind the ankles. */
+  legCurl:(P)=>({back:padAt(96,137,86,11,0)+post(58,143,GY,5)+post(134,143,GY,5)+groundLine(GY)
+    ,front:ln([P.anN[0],P.anN[1]+16],P.anN,style({stroke:L2C(),'stroke-width':4.5}))
+      +cir(P.anN,5.5,style({fill:PADC(),stroke:L2C(),'stroke-width':1.8}))}),
+
+  /* Standing calf machine: the shoulder yoke rides with the shoulders because the
+     load is on them, while the block under the toes stays where it is. */
+  calfMachine:(P)=>({back:frameRect(40,52,11,GY-52,4)+frameRect(150,52,11,GY-52,4)
+    +ln([36,58],[154,58],style({stroke:L2C(),'stroke-width':4}))
+    +ln([P.sh[0]-26,P.sh[1]+2],[P.sh[0]-26,58],style({stroke:L2C(),'stroke-width':3,opacity:.7}))
+    +ln([P.sh[0]+26,P.sh[1]+2],[P.sh[0]+26,58],style({stroke:L2C(),'stroke-width':3,opacity:.7}))
+    +padAt(P.sh[0],P.sh[1]+9,48,11,0)
+    +rect(P.anN[0]-22,GY-13,62,13,3,style({fill:PADC(),stroke:L2C(),'stroke-width':1.8}))
+    +groundLine(GY),front:''}),
+
+  /* Step and the balance rail the hand rests on — rail drawn where the hand is. */
+  stepEdge:(P)=>({back:frameRect(P.anN[0]-22,GY-22,74,22,3)+groundLine(GY,0,P.anN[0]-22)
+    +ln([P.wrN[0],P.wrN[1]-28],[P.wrN[0],GY-22],style({stroke:L2C(),'stroke-width':3,opacity:.7})),front:''}),
+
+  /* Hack squat: back pad along the spine, shoulder yoke, platform under the feet. */
+  hackSled:(P)=>({back:backPad(P,58,12)
+    +padAt(P.sh[0],P.sh[1]-6,36,11,P.torso)
+    +post(P.sh[0]+24,P.sh[1]+4,GY,5)+post(P.hip[0]+18,P.hip[1]+12,GY,5)
+    +ln([P.hip[0]+18,P.hip[1]+8],[P.anN[0]+20,P.anN[1]-2],style({stroke:L2C(),'stroke-width':3,opacity:.7}))
+    +rect(P.anN[0]-30,P.anN[1]-2,62,10,3,style({fill:PADC(),stroke:L2C(),'stroke-width':1.8}))
+    +groundLine(GY),front:''})
+};
+
+/* ---------- THE BODY ----------
+   A filled mannequin, not a stick figure: capsule limbs at real thicknesses, a
+   shoulder line and a hip line so the torso reads as a body with depth, joint
+   dots so a learner can see which joints are working, and the far-side limbs
+   drawn dimmed and first so the near side occludes them correctly. */
+function boneLine(a,b,w,op){
+  return ln(a,b,style({stroke:INKC(),'stroke-width':w,'stroke-linecap':'round',opacity:op===undefined?1:op}));
+}
+function dot(p,r,op){return cir(p,r||2.3,style({fill:INKC(),opacity:op||.5}))}
+function drawBody(P){
+  const f='.34';
+  const far='<g opacity="'+f+'">'
+    +boneLine(P.shF,P.elF,8)+boneLine(P.elF,P.wrF,7.2)
+    +boneLine(P.hpF,P.knF,9.5)+boneLine(P.knF,P.anF,8)+boneLine(P.anF,P.toF,6.4)
+    +'</g>';
+  const core=boneLine(P.hip,P.sh,14)+boneLine(P.hpF,P.hpN,11)+boneLine(P.shF,P.shN,10);
+  const near=boneLine(P.shN,P.elN,8.6)+boneLine(P.elN,P.wrN,7.6)
+    +boneLine(P.hpN,P.knN,10)+boneLine(P.knN,P.anN,8.4)+boneLine(P.anN,P.toN,6.6);
+  const joints=dot(P.elN)+dot(P.knN)+dot(P.shN)+dot(P.hpN)+dot(P.elF)+dot(P.knF);
+  const head=cir(P.head,BONE.head,style({fill:INKC()}));
+  return far+core+near+head+joints;
+}
+/* One call draws a complete frame: apparatus behind, body, apparatus in front,
+   then the load. Uniform layer order for all 48. */
+function drawFigure(d,P,load){
+  const sc=(SCENES[d.scene]||SCENES.floor)(P,d);
+  return sc.back+drawBody(P)+(sc.front||'')+(load||'');
+}
+/* The load, attached to the part of the body that actually carries it — the
+   hands by default, the hips for a hip thrust, the feet for a leg press.
+   Two dumbbells are drawn in a side view, so the far one is scaled down and dimmed
+   rather than laid exactly over the near one — otherwise a symmetric press renders
+   as one confusing blob at the hands. */
+function loadFor(d,P){
+  const L=d.load;
+  if(!L)return'';
+  const at=d.loadAt==='hip'?[P.hip[0],P.hip[1]-9]:(d.loadAt==='foot'?P.anN:P.wrN);
+  if(L==='bar')return barAt(at,L.half||30);
+  if(L==='pullbar')return barPlain(at,L.half||26);
+  if(L==='db')return '<g opacity=".55">'+dbAt(P.wrF,L.ang,(L.sc||1)*0.82)+'</g>'+dbAt(P.wrN,L.ang,L.sc);
+  if(L==='db1')return dbAt(P.wrN,L.ang,L.sc);
+  if(L==='plate')return plate(at,9);
+  if(L==='handle')return ln(at,[at[0]+(L.len||14),at[1]],style({stroke:L2C(),'stroke-width':4}));
+  return'';
+}
+
+/* ---------- THE DEMO TABLE -> ANIMS ----------
+   ANIMS stays the name the regression suites read. It is now keyed by exercise
+   id, one entry per exercise, and gen(t) returns the resolved joints for the
+   fraction t of one rep. */
+const DEMOS={};
+const ANIMS={};
+/* Fill in the joint bend directions. In a FRONT view the far side is mirrored
+   about the vertical axis, which keeps left and right symmetrical without every
+   front-view exercise having to state both sides by hand. */
+function normDemo(d){
+  const front=d.view==='front';
+  d.poleElbN=(d.poleN&&d.poleN.elb!==undefined)?d.poleN.elb:d.pole.elb;
+  d.poleElbF=(d.poleF&&d.poleF.elb!==undefined)?d.poleF.elb:(front?180-d.poleElbN:d.pole.elb);
+  d.poleKneeN=(d.poleN&&d.poleN.knee!==undefined)?d.poleN.knee:d.pole.knee;
+  d.poleKneeF=(d.poleF&&d.poleF.knee!==undefined)?d.poleF.knee:(front?180-d.poleKneeN:d.pole.knee);
+  const t=d.toe===undefined?0:d.toe;
+  d.toeN=d.toeN===undefined?t:d.toeN;
+  d.toeF=d.toeF===undefined?(front?180-d.toeN:t):d.toeF;
+  return d;
+}
+/* Keep an interpolated hand or foot target inside what the limb can actually
+   reach. Between two authored extremes the straight-line path can momentarily sit
+   further from the joint than the limb is long; clamping then simply means "the
+   arm is at full extension", which is what is physically happening. Note this is a
+   mid-rep artefact of interpolating between two valid poses, NOT an authoring
+   error — so _audit_demos.cjs still checks the authored extremes strictly, and
+   also asserts that no rendered frame ever needs clamping. */
+function fitTarget(joint,target,a,b){
+  const dx=target[0]-joint[0],dy=target[1]-joint[1];
+  const d=Math.hypot(dx,dy)||1e-6;
+  const lo=Math.abs(a-b)+0.35,hi=a+b-0.35;
+  if(d>=lo&&d<=hi)return target;
+  const k=(d<lo?lo:hi)/d;
+  return[joint[0]+dx*k,joint[1]+dy*k];
+}
+function jointsOf(p){
+  const tr=DEG(p.torso);
+  return{hip:p.hip,sh:[p.hip[0]+Math.cos(tr)*BONE.torso,p.hip[1]+Math.sin(tr)*BONE.torso]};
+}
+function buildAnims(){
+  Object.keys(DEMOS).forEach(id=>{
+    const d=normDemo(DEMOS[id]);
+    d.home=normPose(d.home);d.away=normPose(d.away);
+    /* a pose that does not name a foot angle inherits the exercise's */
+    ['home','away'].forEach(k=>{
+      if(d[k].toeN===undefined)d[k].toeN=d.toeN;
+      if(d[k].toeF===undefined)d[k].toeF=d.toeF;
+    });
+    ANIMS[id]={
+      label:d.label,
+      gen:function(t){
+        const s=stageAt(t);
+        const p=mixPose(d.home,d.away,s.mix);
+        const j=jointsOf(p);
+        p.wrN=fitTarget(j.sh,p.wrN,BONE.upper,BONE.fore);
+        p.wrF=fitTarget(j.sh,p.wrF,BONE.upper,BONE.fore);
+        p.anN=fitTarget(j.hip,p.anN,BONE.thigh,BONE.shin);
+        p.anF=fitTarget(j.hip,p.anF,BONE.thigh,BONE.shin);
+        return solve(p,d,d);
+      }
+    };
+  });
+}
+
+/* ---------- UNIFORM HUD ----------
+   Identical markup and identical controls for every exercise: which phase the
+   athlete is in, how far through the rep, a pause, and a frame step for studying
+   a position. */
+function demoHUD(id){
+  const d=DEMOS[id];if(!d)return'';
+  return '<div class="demohud">'
+    +'<span class="demoph" id="demo-ph">'+d.ph[0]+'</span>'
+    +'<span class="demotrack"><i id="demo-bar" style="width:0%"></i></span>'
+    +'<button class="demobtn" id="demo-play" onclick="G.demoToggle()" aria-label="Pause or play this demonstration">PAUSE</button>'
+    +'<button class="demobtn" onclick="G.demoStep()" aria-label="Step this demonstration forward one frame">STEP</button>'
+    +'</div>'
+    /* Same place, same label, same type scale for all 48 — this is what tells two
+       look-alike movements apart (a chin-up and a pull-up differ only in the grip,
+       which a side view cannot show). */
+    +(d.setup?'<div class="demosetup"><b>SET UP</b><span>'+d.setup+'</span></div>':'');
+}
+
+/* ---------- THE LOOP ----------
+   One rAF loop, one 200x200 viewBox, one tempo, for every exercise in the
+   library. Honours prefers-reduced-motion by showing both extremes of the rep
+   side by side instead of animating — a still comparison is the actual
+   information for someone who cannot use motion. */
+let demoPlay=true;
+function reducedMotion(){
+  try{return !!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)}catch(e){return false}
+}
+function stageEl(){return document.getElementById('anim-stage')}
+function drawFrame(el,id,t){
+  const d=DEMOS[id];if(!d||!el)return;
+  const P=ANIMS[id].gen(t);
+  el.__g.innerHTML=drawFigure(d,P,loadFor(d,P));
+  const ph=document.getElementById('demo-ph'),bar=document.getElementById('demo-bar');
+  const s=stageAt(t);
+  if(ph)ph.textContent=s.ph==='away'?d.ph[0]:(s.ph==='home'?d.ph[1]:'HOLD');
+  if(bar)bar.style.width=Math.round((t-Math.floor(t))*100)+'%';
+}
+function renderStill(el,id){
+  const d=DEMOS[id];if(!d||!el)return;
+  const A=solve(d.home,d,d),B=solve(d.away,d,d);
+  el.__g.innerHTML='<g transform="translate(2 28) scale(.44)">'+drawFigure(d,A,loadFor(d,A))+'</g>'
+    +'<g transform="translate(102 28) scale(.44)">'+drawFigure(d,B,loadFor(d,B))+'</g>'
+    +'<text x="24" y="16" style="fill:'+DIMC()+';font:700 11px Archivo,system-ui,sans-serif;letter-spacing:.08em">'+d.ph[0]+'</text>'
+    +'<text x="124" y="16" style="fill:'+DIMC()+';font:700 11px Archivo,system-ui,sans-serif;letter-spacing:.08em">'+d.ph[1]+'</text>';
+  const ph=document.getElementById('demo-ph'),bar=document.getElementById('demo-bar');
+  if(ph)ph.textContent='STILL';
+  if(bar)bar.style.width='100%';
+}
+function stopDemo(){
+  const el=stageEl();
+  if(el&&el.__raf)cancelAnimationFrame(el.__raf);
+  if(el)el.__raf=0;
+}
+function startAnimLoop(el,id){
+  const NS='http://www.w3.org/2000/svg';
+  if(!el||!DEMOS[id])return;
+  if(el.__raf)cancelAnimationFrame(el.__raf);
+  el.innerHTML='';
+  const svg=document.createElementNS(NS,'svg');
+  svg.setAttribute('viewBox','0 0 200 200');
+  svg.setAttribute('role','img');
+  svg.setAttribute('aria-label',DEMOS[id].label+' technique demonstration');
+  const g=document.createElementNS(NS,'g');
+  svg.appendChild(g);el.appendChild(svg);
+  el.__g=g;el.__id=id;
+  demoPlay=true;
+  const pb=document.getElementById('demo-play');if(pb)pb.textContent='PAUSE';
+  if(reducedMotion()){renderStill(el,id);return}
+  let t0=null;
+  const frame=function(ts){
+    if(t0===null)t0=ts;
+    if(demoPlay){
+      el.__t=((ts-t0)%CYCLE)/CYCLE;
+      drawFrame(el,id,el.__t);
+    } else if(t0!==null){ t0=ts-(el.__t||0)*CYCLE; }
+    el.__raf=requestAnimationFrame(frame);
+  };
+  el.__t=0;
+  drawFrame(el,id,0);
+  el.__raf=requestAnimationFrame(frame);
+}
+/* Pause / step are shared by the sheet and the full-screen view, so the controls
+   behave identically wherever the demonstration appears. */
+function demoToggle(){
+  const el=stageEl();if(!el||!el.__id)return;
+  demoPlay=!demoPlay;
+  const pb=document.getElementById('demo-play');
+  if(pb)pb.textContent=demoPlay?'PAUSE':'PLAY';
+}
+function demoStep(){
+  const el=stageEl();if(!el||!el.__id)return;
+  demoPlay=false;
+  const pb=document.getElementById('demo-play');if(pb)pb.textContent='PLAY';
+  el.__t=((el.__t||0)+1/16)%1;
+  drawFrame(el,el.__id,el.__t);
+}
+
+/* ================= THE 48 DEMONSTRATIONS =================
+   Every entry is authored the same way, in the same order, so the table itself is
+   auditable:
+
+     label   the movement, for the screen reader and the full-screen header
+     view    'side' or 'front' — decides only how shoulders and hips separate
+     scene   which apparatus kit to draw
+     load    what is carried, and loadAt where it is carried
+     ph      [away-verb, home-verb] — the two actions the HUD alternates between
+     pole    which way the elbows and knees bend (a property of the exercise)
+     home    the SHORTENED-muscle position
+     away    the LENGTHENED-muscle position
+     toe     which way the foot points (overridable per pose — a calf raise
+             keeps the ball of the foot on the step while the heel travels)
+
+   A pose only names what a coach names: pelvis position, spine direction, head
+   direction, and where the hands and feet are. Elbows and knees are solved, never
+   guessed. Coordinates are in the shared 200x200 canvas, floor at y=182, and every
+   hand is within 43.5 units of its shoulder and every foot within 62.8 of its hip
+   — the skeleton's real reach, asserted by _audit_demos.cjs.
+*/
+
+/* ---------- CHEST ---------- */
+const DEMO_CHEST={
+  'bench':{setup:'Feet flat, eyes under the bar, shoulder blades pinned down and back.',label:'Barbell Bench Press',view:'side',scene:'benchFlat',load:'bar',
+    ph:['LOWER','PRESS'],pole:{elb:90,knee:0},toe:0,
+    home:{hip:[106,135],torso:180,head:178,wr:[72,93],an:[138,182]},
+    away:{hip:[106,135],torso:180,head:178,wr:[88,127],an:[138,182]}},
+
+  'db-bench':{setup:'Knees bent, dumbbells over the elbows, wrists stacked straight.',label:'Dumbbell Bench Press',view:'side',scene:'benchFlat',load:'db',
+    ph:['LOWER','PRESS'],pole:{elb:90,knee:0},toe:0,
+    /* each arm works alone, so the bells travel a touch deeper and wider */
+    home:{hip:[106,135],torso:180,head:178,wr:[72,93],an:[138,182]},
+    away:{hip:[106,135],torso:180,head:178,wr:[86,125],an:[138,182]}},
+
+  'incline-db':{setup:'Bench at about 30 degrees, dumbbells over the shoulders, elbows tucked.',label:'Incline Dumbbell Press',view:'side',scene:'benchIncline',load:'db',
+    ph:['LOWER','PRESS'],pole:{elb:90,knee:0},toe:0,
+    /* bench at 30 degrees: the spine runs up-and-back, feet planted forward */
+    home:{hip:[112,148],torso:-150,head:-155,wr:[84,88],an:[138,182]},
+    away:{hip:[112,148],torso:-150,head:-155,wr:[92,118],an:[138,182]}},
+
+  'machine-press':{setup:'Set the seat so the handles sit at mid-chest, back flat on the pad.',label:'Machine Chest Press',view:'side',scene:'machinePress',load:'handle',
+    ph:['RETURN','PRESS'],pole:{elb:90,knee:0},toe:0,
+    home:{hip:[70,132],torso:-88,head:-92,wr:[111,102],an:[98,180]},
+    away:{hip:[70,132],torso:-88,head:-92,wr:[92,100],an:[98,180]}},
+
+  /* Front view: a fly opens and closes in the frontal plane, which a side view
+     simply cannot show. The far side mirrors automatically. */
+  'cable-fly':{setup:'Pulleys at chest height, soft fixed elbows, one foot forward.',label:'Cable Chest Fly',view:'front',scene:'cableDual',load:'handle',
+    ph:['OPEN','SQUEEZE'],pole:{elb:90,knee:0},toe:-14,
+    home:{hip:[100,121],torso:-90,head:-90,wrN:[106,104],wrF:[94,104],anN:[108,181],anF:[92,181]},
+    away:{hip:[100,121],torso:-90,head:-90,wrN:[138,102],wrF:[62,102],anN:[108,181],anF:[92,181]}},
+
+  'pecdec':{setup:'Set the seat so the handles sit at shoulder height, back on the pad.',label:'Machine Chest Fly',view:'front',scene:'pecDec',load:'handle',
+    ph:['OPEN','SQUEEZE'],pole:{elb:90,knee:0},toe:-14,
+    home:{hip:[100,138],torso:-90,head:-90,wrN:[106,120],wrF:[94,120],anN:[112,182],anF:[88,182]},
+    away:{hip:[100,138],torso:-90,head:-90,wrN:[140,118],wrF:[60,118],anN:[112,182],anF:[88,182]}},
+
+  'pushup':{setup:'Hands under the shoulders, one line from ear to ankle, glutes braced.',label:'Push-Up',view:'side',scene:'floor',load:null,
+    ph:['LOWER','PRESS'],pole:{elb:-20,knee:100},toe:20,
+    /* one rigid line from ear to ankle: hands and feet stay planted, the whole
+       body travels, and the elbows track back toward the ribs. The shoulder sits
+       42.4 from the hand at the top (arms extended) and 30.8 at the bottom — that
+       second number is what makes a 90-degree elbow, so the chest stops a fist's
+       height off the floor instead of sinking onto it. */
+    home:{hip:[97,153],torso:-156,head:-152,wr:[56,180],an:[154,178]},
+    away:{hip:[95,160],torso:-163,head:-159,wr:[56,180],an:[154,178]}},
+
+  'dip':{setup:'Hands on the bars, shoulders pulled down away from the ears, chest tall.',label:'Dip',view:'side',scene:'dipBars',load:null,
+    ph:['LOWER','PRESS'],pole:{elb:180,knee:180},toe:110,
+    /* upright torso, elbows driving back, shoulders kept down away from the ears */
+    home:{hip:[92,111],torso:-90,head:-92,wr:[92,118],an:[68,168]},
+    away:{hip:[92,124],torso:-90,head:-92,wr:[92,118],an:[70,176]}}
+};
+
+/* ---------- BACK ---------- */
+const DEMO_BACK={
+  'row':{setup:'Hinge to about 45 degrees, overhand grip outside the knees, back flat.',label:'Barbell Row',view:'side',scene:'floor',load:'bar',
+    ph:['LOWER','ROW'],pole:{elb:200,knee:0},toe:0,
+    /* hinged to about 45 degrees: shoulders forward of the hips, chest down */
+    home:{hip:[76,134],torso:-45,head:-45,wr:[114,120],an:[72,182]},
+    away:{hip:[76,134],torso:-45,head:-45,wr:[104,150],an:[72,182]}},
+
+  'db-row':{setup:'One knee and hand on the bench, back flat, weight under the shoulder.',label:'Dumbbell Row',view:'side',scene:'benchRow',load:'db1',
+    ph:['LOWER','ROW'],pole:{elb:200,knee:0},toe:0,
+    /* one hand and one knee take the bench, the other arm rows — so the two sides
+       bend in different directions and are authored separately */
+    poleF:{elb:200,knee:-10},
+    home:{hip:[74,132],torso:-30,head:-26,wrN:[116,122],wrF:[100,148],anN:[100,182],anF:[68,168]},
+    away:{hip:[74,132],torso:-30,head:-26,wrN:[116,154],wrF:[100,148],anN:[100,182],anF:[68,168]}},
+
+  'machine-row':{setup:'Chest against the pad, feet braced, handles set at mid-chest.',label:'Machine Row',view:'side',scene:'machineRow',load:'handle',
+    ph:['RETURN','ROW'],pole:{elb:180,knee:0},toe:0,
+    home:{hip:[66,134],torso:-84,head:-88,wr:[84,102],an:[100,182]},
+    away:{hip:[66,134],torso:-84,head:-88,wr:[112,100],an:[100,182]}},
+
+  'cablerow':{setup:'Feet braced, knees soft, back upright, long spine before the first pull.',label:'Seated Cable Row',view:'side',scene:'cableLow',load:'handle',
+    ph:['RETURN','ROW'],pole:{elb:180,knee:0},toe:0,
+    home:{hip:[72,138],torso:-84,head:-88,wr:[92,106],an:[116,182]},
+    away:{hip:[72,138],torso:-84,head:-88,wr:[118,104],an:[116,182]}},
+
+  'pulldown':{setup:'Thighs under the pads, grip just outside the shoulders, chest up.',label:'Lat Pulldown',view:'side',scene:'cableHigh',load:'pullbar',
+    ph:['STRETCH','PULL'],pole:{elb:0,knee:0},toe:0,
+    /* lean back ten degrees, bar to the collarbone, no swinging */
+    home:{hip:[92,140],torso:-78,head:-82,wr:[104,116],an:[112,182]},
+    away:{hip:[92,140],torso:-78,head:-82,wr:[108,72],an:[112,182]}},
+
+  'pullup':{setup:'Overhand grip just outside the shoulders, hang with the shoulders active.',label:'Pull-Up',view:'side',scene:'pullupBar',load:null,
+    ph:['LOWER','PULL'],pole:{elb:0,knee:170},toe:100,
+    /* overhand, dead hang to chin over the bar, legs quiet */
+    home:{hip:[88,84],torso:-86,head:-88,wr:[82,22],an:[94,144]},
+    away:{hip:[88,100],torso:-88,head:-90,wr:[82,22],an:[94,160]}},
+
+  'chinup':{setup:'Underhand, shoulder-width grip - the only change from a pull-up.',label:'Chin-Up',view:'side',scene:'pullupBar',load:null,
+    ph:['LOWER','PULL'],pole:{elb:0,knee:170},toe:100,
+    /* underhand grip loads the biceps harder, so the elbows travel further back */
+    home:{hip:[90,86],torso:-86,head:-88,wr:[84,22],an:[96,146]},
+    away:{hip:[90,100],torso:-90,head:-92,wr:[84,22],an:[96,160]}},
+
+  'facepull':{setup:'Pulley at eye height, overhand grip on the rope, step back to load it.',label:'Face Pull',view:'side',scene:'cableFace',load:null,
+    ph:['RELEASE','PULL'],pole:{elb:0,knee:0},toe:0,
+    /* rope to the forehead, elbows high, external rotation at the end */
+    home:{hip:[92,126],torso:-86,head:-88,wr:[82,80],an:[98,182]},
+    away:{hip:[92,126],torso:-86,head:-88,wr:[128,84],an:[98,182]}},
+
+  'aus-row':{setup:'Bar set so the arms are straight at the bottom, body rigid, heels down.',label:'Inverted Row',view:'side',scene:'lowBar',load:null,
+    ph:['LOWER','ROW'],pole:{elb:180,knee:100},toe:-60,
+    /* straight line heels to head, chest pulled to the bar, heels on the floor */
+    home:{hip:[79,124],torso:-30,head:-26,wr:[132,96],an:[58,182]},
+    away:{hip:[87,148],torso:-30,head:-26,wr:[132,96],an:[58,182]}}
+};
+
+/* ---------- SHOULDERS ---------- */
+const DEMO_SHOULDERS={
+  'ohp':{setup:'Bar on the front delts, hands just outside the shoulders, elbows under it.',label:'Overhead Press',view:'side',scene:'floor',load:'bar',
+    ph:['LOWER','PRESS'],pole:{elb:0,knee:0},toe:0,
+    /* brace hard, bar from the chin to lockout, head comes through at the top */
+    home:{hip:[96,121],torso:-88,head:-92,wr:[98,44],an:[104,182]},
+    away:{hip:[96,121],torso:-88,head:-92,wr:[104,76],an:[104,182]}},
+
+  'db-ohp':{setup:'Seated with the back supported, dumbbells at ear height, elbows under.',label:'Dumbbell Shoulder Press',view:'side',scene:'benchUpright',load:'db',
+    ph:['LOWER','PRESS'],pole:{elb:90,knee:0},toe:0,
+    home:{hip:[96,138],torso:-84,head:-88,wr:[100,62],an:[118,182]},
+    away:{hip:[96,138],torso:-84,head:-88,wr:[106,92],an:[118,182]}},
+
+  'machine-ohp':{setup:'Set the seat so the handles start at shoulder level, back on the pad.',label:'Machine Shoulder Press',view:'side',scene:'machineOHP',load:'handle',
+    ph:['LOWER','PRESS'],pole:{elb:90,knee:0},toe:0,
+    home:{hip:[78,138],torso:-86,head:-90,wr:[82,62],an:[112,182]},
+    away:{hip:[78,138],torso:-86,head:-90,wr:[88,92],an:[112,182]}},
+
+  /* Front view: lead with the elbows, raise to shoulder height, no shrug */
+  'lateral':{setup:'Light dumbbells at the sides, slight elbow bend, torso completely still.',label:'Lateral Raise',view:'front',scene:'floor',load:'db',
+    ph:['LOWER','RAISE'],pole:{elb:90,knee:0},toe:-14,
+    home:{hip:[100,121],torso:-90,head:-90,wrN:[110,126],wrF:[90,126],anN:[108,181],anF:[92,181]},
+    away:{hip:[100,121],torso:-90,head:-90,wrN:[142,86],wrF:[58,86],anN:[108,181],anF:[92,181]}},
+
+  'pike-pushup':{setup:'Hands and feet down, hips piked high, head between the hands.',label:'Pike Push-Up',view:'side',scene:'floor',load:null,
+    ph:['LOWER','PRESS'],pole:{elb:-30,knee:150},toe:26,
+    /* hips high, crown of the head toward the floor between the hands. The hips sit
+       at the leg-length limit at the top, so the range comes from folding the torso
+       from near-vertical to near-horizontal — and the bottom is the closest the
+       shoulder can physically get to the planted hand at that hip height, which is
+       what holds the elbow at ~95 degrees rather than collapsing. */
+    home:{hip:[98,119],torso:145,head:149,wr:[60,180],an:[100,178]},
+    away:{hip:[98,123],torso:124,head:128,wr:[60,180],an:[100,178]}}
+};
+
+/* ---------- ARMS ---------- */
+const DEMO_ARMS={
+  'curl':{setup:'Stand tall, underhand grip shoulder-width, elbows pinned to the sides.',label:'Barbell Curl',view:'side',scene:'floor',load:'bar',
+    ph:['LOWER','CURL'],pole:{elb:90,knee:0},toe:0,
+    /* elbows pinned to the sides, zero swing */
+    home:{hip:[96,121],torso:-88,head:-92,wr:[108,96],an:[104,182]},
+    away:{hip:[96,121],torso:-88,head:-92,wr:[106,124],an:[104,182]}},
+
+  'hammer':{setup:'Neutral grip, thumbs up, elbows pinned to the sides.',label:'Hammer Curl',view:'side',scene:'floor',load:'db',
+    ph:['LOWER','CURL'],pole:{elb:90,knee:0},toe:0,
+    home:{hip:[96,121],torso:-88,head:-92,wr:[104,96],an:[104,182]},
+    away:{hip:[96,121],torso:-88,head:-92,wr:[102,124],an:[104,182]}},
+
+  'cable-curl':{setup:'Pulley low, elbows pinned, step back until the cable is under tension.',label:'Cable Curl',view:'side',scene:'cableLow',load:'bar',
+    ph:['LOWER','CURL'],pole:{elb:90,knee:0},toe:0,
+    /* constant tension from the bottom of the range */
+    home:{hip:[92,121],torso:-88,head:-92,wr:[112,100],an:[100,182]},
+    away:{hip:[92,121],torso:-88,head:-92,wr:[108,124],an:[100,182]}},
+
+  'preacher':{setup:'Armpits on the top of the pad, elbows in the same spot every rep.',label:'Preacher Curl',view:'side',scene:'preacher',load:'bar',
+    ph:['LOWER','CURL'],pole:{elb:90,knee:0},toe:0,
+    /* arms locked into the pad, so the shoulder stays high and the elbow never travels */
+    home:{hip:[92,136],torso:-80,head:-84,wr:[116,96],an:[112,182]},
+    away:{hip:[92,136],torso:-80,head:-84,wr:[128,124],an:[112,182]}},
+
+  'pushdown':{setup:'Pulley high, elbows pinned to the ribs, hinge forward very slightly.',label:'Triceps Pushdown',view:'side',scene:'cableHigh',load:'handle',
+    ph:['RETURN','PUSH'],pole:{elb:0,knee:0},toe:0,
+    /* home is the EXTENDED elbow here, because that is where the triceps is short;
+       away is the flexed elbow, so phase one is still the controlled return */
+    home:{hip:[92,121],torso:-86,head:-90,wr:[106,126],an:[100,182]},
+    away:{hip:[92,121],torso:-86,head:-90,wr:[100,98],an:[100,182]}},
+
+  /* Lying, not standing: the most visibly wrong demo in the old set */
+  'skull':{setup:'Lying flat, bar over the forehead, elbows pointing straight up.',label:'Skullcrusher',view:'side',scene:'benchFlat',load:'bar',
+    ph:['LOWER','EXTEND'],pole:{elb:-90,knee:0},toe:0,
+    home:{hip:[106,135],torso:180,head:176,wr:[72,92],an:[138,182]},
+    away:{hip:[106,135],torso:180,head:176,wr:[52,120],an:[138,182]}},
+
+  'db-ext':{setup:'One dumbbell overhead in both hands, elbows close to the ears.',label:'Overhead Triceps Extension',view:'side',scene:'floor',load:'db1',
+    ph:['LOWER','EXTEND'],pole:{elb:-90,knee:0},toe:0,
+    /* both hands on one bell overhead, elbows narrow, lower behind the head */
+    home:{hip:[96,121],torso:-88,head:-92,wr:[98,44],an:[104,182]},
+    away:{hip:[96,121],torso:-88,head:-92,wr:[74,72],an:[104,182]}}
+};
+
+/* ---------- LEGS ---------- */
+const DEMO_LEGS={
+  'squat':{setup:'Bar on the upper traps, feet shoulder-width, toes turned slightly out.',label:'Back Squat',view:'side',scene:'rack',load:'bar',
+    ph:['DESCEND','DRIVE'],pole:{elb:120,knee:0},toe:0,
+    home:{hip:[100,126],torso:-90,head:-92,wr:[86,92],an:[106,182]},
+    /* sit between the hips: hips travel back and down, knees track the toes */
+    away:{hip:[88,158],torso:-70,head:-72,wr:[86,126],an:[106,182]}},
+
+  'hack':{setup:'Back and shoulders against the pads, whole foot planted on the platform.',label:'Hack Squat',view:'side',scene:'hackSled',load:null,
+    ph:['DESCEND','DRIVE'],pole:{elb:120,knee:0},toe:0,
+    /* back flat on the angled pad, feet mid-platform, deep knees */
+    home:{hip:[104,134],torso:-104,head:-100,wr:[96,132],an:[112,172]},
+    away:{hip:[92,162],torso:-96,head:-94,wr:[88,158],an:[112,172]}},
+
+  'deadlift':{setup:'Bar over mid-foot, shins close, overhand grip outside the knees.',label:'Conventional Deadlift',view:'side',scene:'floor',load:'bar',
+    ph:['SET','LIFT'],pole:{elb:90,knee:20},toe:0,
+    /* locked out: hips through, bar against the thighs, shoulders behind the bar */
+    home:{hip:[100,126],torso:-86,head:-88,wr:[104,131],an:[102,182]},
+    /* floor: hips back and down, shins near vertical, bar over mid-foot */
+    away:{hip:[84,162],torso:-54,head:-62,wr:[104,175],an:[102,182]}},
+
+  'rdl':{setup:'Stand tall, overhand grip at the hips, knees unlocked but fixed.',label:'Romanian Deadlift',view:'side',scene:'floor',load:'bar',
+    ph:['HINGE','STAND'],pole:{elb:90,knee:20},toe:0,
+    /* soft knees, hips push back, the bar slides down the thighs */
+    home:{hip:[100,124],torso:-88,head:-90,wr:[104,129],an:[102,182]},
+    away:{hip:[78,134],torso:-52,head:-60,wr:[104,148],an:[102,182]}},
+
+  /* Supine with the shoulders on a bench, not a standing hinge: the old demo was
+     simply the wrong movement. Hips drive to lockout, then lower. */
+  'hipthrust':{setup:'Upper back on the bench, feet flat and shoulder-width, chin tucked.',label:'Hip Thrust',view:'side',scene:'benchShoulder',load:'bar',loadAt:'hip',
+    ph:['LOWER','DRIVE'],pole:{elb:90,knee:0},toe:0,
+    home:{hip:[106,150],torso:180,head:178,wr:[108,146],an:[140,182]},
+    away:{hip:[102,166],torso:-153,head:178,wr:[104,162],an:[140,182]}},
+
+  /* Sled press, not a seated leg extension: also previously mis-mapped. */
+  'legpress':{setup:'Back and hips flat on the pad, feet shoulder-width, whole foot on it.',label:'Leg Press',view:'side',scene:'legPress',load:null,
+    ph:['RETURN','PRESS'],pole:{elb:90,knee:-40},toe:0,
+    /* reclined on the sled, knees to ninety, never bouncing out of the hole */
+    home:{hip:[96,140],torso:-152,head:-160,wr:[96,146],an:[142,98]},
+    away:{hip:[96,140],torso:-152,head:-160,wr:[96,146],an:[104,124]}},
+
+  'bulgarian':{setup:'Rear foot on the bench, front foot forward enough to keep the heel down.',label:'Bulgarian Split Squat',view:'side',scene:'benchBehind',load:'db',
+    ph:['DESCEND','DRIVE'],pole:{elb:90,knee:0},toe:0,
+    /* rear foot on the bench, front heel planted for the whole set */
+    poleF:{elb:90,knee:180},
+    home:{hip:[104,128],torso:-88,head:-90,wr:[110,130],anN:[112,182],anF:[62,146]},
+    away:{hip:[104,152],torso:-80,head:-82,wr:[116,154],anN:[112,182],anF:[62,146]}},
+
+  'lunge':{setup:'Long stride, torso tall, back knee tracking down toward the floor.',label:'Walking Lunge',view:'side',scene:'floor',load:'db',
+    ph:['DESCEND','DRIVE'],pole:{elb:90,knee:0},toe:0,
+    /* long stride, back knee kisses the ground, torso tall */
+    poleF:{elb:90,knee:180},
+    home:{hip:[96,126],torso:-88,head:-90,wr:[102,128],anN:[122,182],anF:[62,178]},
+    away:{hip:[96,152],torso:-84,head:-86,wr:[104,154],anN:[122,182],anF:[62,178]}},
+
+  'legcurl':{setup:'Knees just past the pad edge, hips down against the bench.',label:'Lying Leg Curl',view:'side',scene:'legCurl',load:null,
+    ph:['LOWER','CURL'],pole:{elb:90,knee:-90},toe:0,
+    /* prone, hips glued to the pad, heels curl to the glutes */
+    home:{hip:[100,130],torso:178,head:172,wr:[92,142],an:[126,110]},
+    away:{hip:[100,130],torso:178,head:172,wr:[92,142],an:[132,152]}},
+
+  'legext':{setup:'Line the knee up with the machine pivot, pad on the lower shin.',label:'Leg Extension',view:'side',scene:'legExt',load:null,
+    ph:['LOWER','EXTEND'],pole:{elb:90,knee:-20},toe:0,
+    /* seated, pause one second at full extension, lower slow */
+    home:{hip:[62,126],torso:-86,head:-90,wr:[76,130],an:[112,100]},
+    away:{hip:[62,126],torso:-86,head:-90,wr:[76,130],an:[104,130]}},
+
+  'calf':{setup:'Shoulders under the yoke, balls of the feet on the block, knees straight.',label:'Standing Calf Raise',view:'side',scene:'calfMachine',load:null,
+    ph:['LOWER','RAISE'],pole:{elb:90,knee:0},toe:0,
+    /* full stretch at the bottom, up onto the big toe, pause at the top; the ball
+       of the foot stays on the block while the heel travels */
+    home:{hip:[96,116],torso:-88,head:-92,wr:[100,88],an:[104,174],toeN:-25},
+    away:{hip:[96,105],torso:-88,head:-92,wr:[100,77],an:[104,163],toeN:25}},
+
+  'air-squat':{setup:'Feet shoulder-width, toes slightly out, arms forward as a counterweight.',label:'Bodyweight Squat',view:'side',scene:'floor',load:null,
+    ph:['DESCEND','DRIVE'],pole:{elb:90,knee:0},toe:0,
+    /* arms reach forward as the counterweight, chest stays tall */
+    home:{hip:[100,126],torso:-90,head:-92,wr:[126,104],an:[106,182]},
+    away:{hip:[88,158],torso:-70,head:-72,wr:[130,132],an:[106,182]}},
+
+  'bw-split':{setup:'Split long enough that the front heel stays down at the bottom.',label:'Bodyweight Split Squat',view:'side',scene:'floor',load:null,
+    ph:['DESCEND','DRIVE'],pole:{elb:0,knee:0},toe:0,
+    poleF:{elb:0,knee:180},
+    home:{hip:[100,128],torso:-88,head:-90,wr:[106,130],anN:[122,182],anF:[64,176]},
+    away:{hip:[100,154],torso:-82,head:-84,wr:[110,156],anN:[122,182],anF:[64,176]}},
+
+  'bridge':{setup:'On your back, feet flat and close to the glutes, heels driving down.',label:'Glute Bridge',view:'side',scene:'floor',load:null,
+    ph:['LOWER','DRIVE'],pole:{elb:90,knee:0},toe:0,
+    /* supine on the floor, shoulders stay down, hips drive to full lockout */
+    home:{hip:[92,142],torso:180,head:170,wr:[70,168],an:[130,182]},
+    away:{hip:[88,160],torso:-151,head:170,wr:[70,168],an:[130,182]}},
+
+  'bw-calf':{setup:'Ball of one foot on the step, other foot tucked behind, hand on the rail.',label:'Single-Leg Calf Raise',view:'side',scene:'stepEdge',load:null,
+    ph:['LOWER','RAISE'],pole:{elb:90,knee:0},toe:0,
+    /* one leg, full stretch off the step, rail held lightly for balance only */
+    home:{hip:[86,104],torso:-88,head:-92,wr:[80,78],an:[96,164],toeN:-40},
+    away:{hip:[86,93],torso:-88,head:-92,wr:[80,67],an:[96,153],toeN:40}}
+};
+
+/* ---------- CORE ---------- */
+const DEMO_CORE={
+  'plank':{setup:'Elbows under the shoulders, forearms down, one line, glutes braced.',label:'Plank',view:'side',scene:'floor',load:null,
+    ph:['HOLD','BRACE'],pole:{elb:90,knee:100},toe:30,
+    /* ribs down, glutes squeezed; the forearms stay on the floor and the whole
+       body lifts as one line — reps here are seconds, so the travel is small */
+    home:{hip:[98,166],torso:-167.5,head:-166,wr:[74,181],an:[142,176]},
+    away:{hip:[98,163],torso:-167.5,head:-166,wr:[74,181],an:[142,173]}},
+
+  'hlr':{setup:'Hang from the bar, shoulders active, legs together, no swing.',label:'Hanging Leg Raise',view:'side',scene:'pullupBar',load:null,
+    ph:['LOWER','RAISE'],pole:{elb:0,knee:170},toe:100,
+    /* hang quiet, raise the legs to hip height, no swinging */
+    home:{hip:[88,98],torso:-86,head:-88,wr:[82,22],an:[148,102]},
+    away:{hip:[88,98],torso:-86,head:-88,wr:[82,22],an:[92,160]}},
+
+  'crunch':{setup:'Kneel under the high pulley, rope beside the head, hips fixed.',label:'Cable Crunch',view:'side',scene:'cableHigh',load:null,
+    ph:['RELEASE','CRUNCH'],pole:{elb:90,knee:0},toe:170,
+    /* kneeling, hinge from the ribs, hips stay put */
+    home:{hip:[96,158],torso:-92,head:-96,wr:[94,116],an:[91,178]},
+    away:{hip:[96,158],torso:-50,head:-56,wr:[110,124],an:[91,178]}},
+
+  'situp':{setup:'Knees bent, feet flat and anchored, hands light behind the head.',label:'Sit-Up',view:'side',scene:'floor',load:null,
+    ph:['LOWER','CURL UP'],pole:{elb:90,knee:0},toe:0,
+    /* peel the spine off the floor one vertebra at a time, hands unloaded */
+    home:{hip:[88,166],torso:-86,head:-88,wr:[84,118],an:[134,182]},
+    away:{hip:[88,166],torso:176,head:172,wr:[46,162],an:[134,182]}}
+};
+
+Object.assign(DEMOS,DEMO_CHEST,DEMO_BACK,DEMO_SHOULDERS,DEMO_ARMS,DEMO_LEGS,DEMO_CORE);
+buildAnims();
+
+/* ---- data ---- */
+const V41_DEMOS={"bench":{"setup":"Feet flat, eyes under the bar, shoulder blades pinned down and back.","label":"Barbell Bench Press","view":"side","scene":"benchFlat","load":"bar","ph":["LOWER","PRESS"],"pole":{"elb":90,"knee":0},"toe":0,"home":{"hip":[106,135],"torso":180,"head":178,"wrN":[72,93],"wrF":[72,93],"anN":[138,182],"anF":[138,182],"toeN":0,"toeF":0},"away":{"hip":[106,135],"torso":180,"head":178,"wrN":[88,127],"wrF":[88,127],"anN":[138,182],"anF":[138,182],"toeN":0,"toeF":0},"poleElbN":90,"poleElbF":90,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"db-bench":{"setup":"Knees bent, dumbbells over the elbows, wrists stacked straight.","label":"Dumbbell Bench Press","view":"side","scene":"benchFlat","load":"db","ph":["LOWER","PRESS"],"pole":{"elb":90,"knee":0},"toe":0,"home":{"hip":[106,135],"torso":180,"head":178,"wrN":[72,93],"wrF":[72,93],"anN":[138,182],"anF":[138,182],"toeN":0,"toeF":0},"away":{"hip":[106,135],"torso":180,"head":178,"wrN":[86,125],"wrF":[86,125],"anN":[138,182],"anF":[138,182],"toeN":0,"toeF":0},"poleElbN":90,"poleElbF":90,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"incline-db":{"setup":"Bench at about 30 degrees, dumbbells over the shoulders, elbows tucked.","label":"Incline Dumbbell Press","view":"side","scene":"benchIncline","load":"db","ph":["LOWER","PRESS"],"pole":{"elb":90,"knee":0},"toe":0,"home":{"hip":[112,148],"torso":-150,"head":-155,"wrN":[84,88],"wrF":[84,88],"anN":[138,182],"anF":[138,182],"toeN":0,"toeF":0},"away":{"hip":[112,148],"torso":-150,"head":-155,"wrN":[92,118],"wrF":[92,118],"anN":[138,182],"anF":[138,182],"toeN":0,"toeF":0},"poleElbN":90,"poleElbF":90,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"machine-press":{"setup":"Set the seat so the handles sit at mid-chest, back flat on the pad.","label":"Machine Chest Press","view":"side","scene":"machinePress","load":"handle","ph":["RETURN","PRESS"],"pole":{"elb":90,"knee":0},"toe":0,"home":{"hip":[70,132],"torso":-88,"head":-92,"wrN":[111,102],"wrF":[111,102],"anN":[98,180],"anF":[98,180],"toeN":0,"toeF":0},"away":{"hip":[70,132],"torso":-88,"head":-92,"wrN":[92,100],"wrF":[92,100],"anN":[98,180],"anF":[98,180],"toeN":0,"toeF":0},"poleElbN":90,"poleElbF":90,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"cable-fly":{"setup":"Pulleys at chest height, soft fixed elbows, one foot forward.","label":"Cable Chest Fly","view":"front","scene":"cableDual","load":"handle","ph":["OPEN","SQUEEZE"],"pole":{"elb":90,"knee":0},"toe":-14,"home":{"hip":[100,121],"torso":-90,"head":-90,"wrN":[106,104],"wrF":[94,104],"anN":[108,181],"anF":[92,181],"toeN":-14,"toeF":194},"away":{"hip":[100,121],"torso":-90,"head":-90,"wrN":[138,102],"wrF":[62,102],"anN":[108,181],"anF":[92,181],"toeN":-14,"toeF":194},"poleElbN":90,"poleElbF":90,"poleKneeN":0,"poleKneeF":180,"toeN":-14,"toeF":194},"pecdec":{"setup":"Set the seat so the handles sit at shoulder height, back on the pad.","label":"Machine Chest Fly","view":"front","scene":"pecDec","load":"handle","ph":["OPEN","SQUEEZE"],"pole":{"elb":90,"knee":0},"toe":-14,"home":{"hip":[100,138],"torso":-90,"head":-90,"wrN":[106,120],"wrF":[94,120],"anN":[112,182],"anF":[88,182],"toeN":-14,"toeF":194},"away":{"hip":[100,138],"torso":-90,"head":-90,"wrN":[140,118],"wrF":[60,118],"anN":[112,182],"anF":[88,182],"toeN":-14,"toeF":194},"poleElbN":90,"poleElbF":90,"poleKneeN":0,"poleKneeF":180,"toeN":-14,"toeF":194},"pushup":{"setup":"Hands under the shoulders, one line from ear to ankle, glutes braced.","label":"Push-Up","view":"side","scene":"floor","load":null,"ph":["LOWER","PRESS"],"pole":{"elb":-20,"knee":100},"toe":20,"home":{"hip":[97,153],"torso":-156,"head":-152,"wrN":[56,180],"wrF":[56,180],"anN":[154,178],"anF":[154,178],"toeN":20,"toeF":20},"away":{"hip":[95,160],"torso":-163,"head":-159,"wrN":[56,180],"wrF":[56,180],"anN":[154,178],"anF":[154,178],"toeN":20,"toeF":20},"poleElbN":-20,"poleElbF":-20,"poleKneeN":100,"poleKneeF":100,"toeN":20,"toeF":20},"dip":{"setup":"Hands on the bars, shoulders pulled down away from the ears, chest tall.","label":"Dip","view":"side","scene":"dipBars","load":null,"ph":["LOWER","PRESS"],"pole":{"elb":180,"knee":180},"toe":110,"home":{"hip":[92,111],"torso":-90,"head":-92,"wrN":[92,118],"wrF":[92,118],"anN":[68,168],"anF":[68,168],"toeN":110,"toeF":110},"away":{"hip":[92,124],"torso":-90,"head":-92,"wrN":[92,118],"wrF":[92,118],"anN":[70,176],"anF":[70,176],"toeN":110,"toeF":110},"poleElbN":180,"poleElbF":180,"poleKneeN":180,"poleKneeF":180,"toeN":110,"toeF":110},"row":{"setup":"Hinge to about 45 degrees, overhand grip outside the knees, back flat.","label":"Barbell Row","view":"side","scene":"floor","load":"bar","ph":["LOWER","ROW"],"pole":{"elb":200,"knee":0},"toe":0,"home":{"hip":[76,134],"torso":-45,"head":-45,"wrN":[114,120],"wrF":[114,120],"anN":[72,182],"anF":[72,182],"toeN":0,"toeF":0},"away":{"hip":[76,134],"torso":-45,"head":-45,"wrN":[104,150],"wrF":[104,150],"anN":[72,182],"anF":[72,182],"toeN":0,"toeF":0},"poleElbN":200,"poleElbF":200,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"db-row":{"setup":"One knee and hand on the bench, back flat, weight under the shoulder.","label":"Dumbbell Row","view":"side","scene":"benchRow","load":"db1","ph":["LOWER","ROW"],"pole":{"elb":200,"knee":0},"toe":0,"poleF":{"elb":200,"knee":-10},"home":{"hip":[74,132],"torso":-30,"head":-26,"wrN":[116,122],"wrF":[100,148],"anN":[100,182],"anF":[68,168],"toeN":0,"toeF":0},"away":{"hip":[74,132],"torso":-30,"head":-26,"wrN":[116,154],"wrF":[100,148],"anN":[100,182],"anF":[68,168],"toeN":0,"toeF":0},"poleElbN":200,"poleElbF":200,"poleKneeN":0,"poleKneeF":-10,"toeN":0,"toeF":0},"machine-row":{"setup":"Chest against the pad, feet braced, handles set at mid-chest.","label":"Machine Row","view":"side","scene":"machineRow","load":"handle","ph":["RETURN","ROW"],"pole":{"elb":180,"knee":0},"toe":0,"home":{"hip":[66,134],"torso":-84,"head":-88,"wrN":[84,102],"wrF":[84,102],"anN":[100,182],"anF":[100,182],"toeN":0,"toeF":0},"away":{"hip":[66,134],"torso":-84,"head":-88,"wrN":[112,100],"wrF":[112,100],"anN":[100,182],"anF":[100,182],"toeN":0,"toeF":0},"poleElbN":180,"poleElbF":180,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"cablerow":{"setup":"Feet braced, knees soft, back upright, long spine before the first pull.","label":"Seated Cable Row","view":"side","scene":"cableLow","load":"handle","ph":["RETURN","ROW"],"pole":{"elb":180,"knee":0},"toe":0,"home":{"hip":[72,138],"torso":-84,"head":-88,"wrN":[92,106],"wrF":[92,106],"anN":[116,182],"anF":[116,182],"toeN":0,"toeF":0},"away":{"hip":[72,138],"torso":-84,"head":-88,"wrN":[118,104],"wrF":[118,104],"anN":[116,182],"anF":[116,182],"toeN":0,"toeF":0},"poleElbN":180,"poleElbF":180,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"pulldown":{"setup":"Thighs under the pads, grip just outside the shoulders, chest up.","label":"Lat Pulldown","view":"side","scene":"cableHigh","load":"pullbar","ph":["STRETCH","PULL"],"pole":{"elb":0,"knee":0},"toe":0,"home":{"hip":[92,140],"torso":-78,"head":-82,"wrN":[104,116],"wrF":[104,116],"anN":[112,182],"anF":[112,182],"toeN":0,"toeF":0},"away":{"hip":[92,140],"torso":-78,"head":-82,"wrN":[108,72],"wrF":[108,72],"anN":[112,182],"anF":[112,182],"toeN":0,"toeF":0},"poleElbN":0,"poleElbF":0,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"pullup":{"setup":"Overhand grip just outside the shoulders, hang with the shoulders active.","label":"Pull-Up","view":"side","scene":"pullupBar","load":null,"ph":["LOWER","PULL"],"pole":{"elb":0,"knee":170},"toe":100,"home":{"hip":[88,84],"torso":-86,"head":-88,"wrN":[82,22],"wrF":[82,22],"anN":[94,144],"anF":[94,144],"toeN":100,"toeF":100},"away":{"hip":[88,100],"torso":-88,"head":-90,"wrN":[82,22],"wrF":[82,22],"anN":[94,160],"anF":[94,160],"toeN":100,"toeF":100},"poleElbN":0,"poleElbF":0,"poleKneeN":170,"poleKneeF":170,"toeN":100,"toeF":100},"chinup":{"setup":"Underhand, shoulder-width grip - the only change from a pull-up.","label":"Chin-Up","view":"side","scene":"pullupBar","load":null,"ph":["LOWER","PULL"],"pole":{"elb":0,"knee":170},"toe":100,"home":{"hip":[90,86],"torso":-86,"head":-88,"wrN":[84,22],"wrF":[84,22],"anN":[96,146],"anF":[96,146],"toeN":100,"toeF":100},"away":{"hip":[90,100],"torso":-90,"head":-92,"wrN":[84,22],"wrF":[84,22],"anN":[96,160],"anF":[96,160],"toeN":100,"toeF":100},"poleElbN":0,"poleElbF":0,"poleKneeN":170,"poleKneeF":170,"toeN":100,"toeF":100},"facepull":{"setup":"Pulley at eye height, overhand grip on the rope, step back to load it.","label":"Face Pull","view":"side","scene":"cableFace","load":null,"ph":["RELEASE","PULL"],"pole":{"elb":0,"knee":0},"toe":0,"home":{"hip":[92,126],"torso":-86,"head":-88,"wrN":[82,80],"wrF":[82,80],"anN":[98,182],"anF":[98,182],"toeN":0,"toeF":0},"away":{"hip":[92,126],"torso":-86,"head":-88,"wrN":[128,84],"wrF":[128,84],"anN":[98,182],"anF":[98,182],"toeN":0,"toeF":0},"poleElbN":0,"poleElbF":0,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"aus-row":{"setup":"Bar set so the arms are straight at the bottom, body rigid, heels down.","label":"Inverted Row","view":"side","scene":"lowBar","load":null,"ph":["LOWER","ROW"],"pole":{"elb":180,"knee":100},"toe":-60,"home":{"hip":[79,124],"torso":-30,"head":-26,"wrN":[132,96],"wrF":[132,96],"anN":[58,182],"anF":[58,182],"toeN":-60,"toeF":-60},"away":{"hip":[87,148],"torso":-30,"head":-26,"wrN":[132,96],"wrF":[132,96],"anN":[58,182],"anF":[58,182],"toeN":-60,"toeF":-60},"poleElbN":180,"poleElbF":180,"poleKneeN":100,"poleKneeF":100,"toeN":-60,"toeF":-60},"ohp":{"setup":"Bar on the front delts, hands just outside the shoulders, elbows under it.","label":"Overhead Press","view":"side","scene":"floor","load":"bar","ph":["LOWER","PRESS"],"pole":{"elb":0,"knee":0},"toe":0,"home":{"hip":[96,121],"torso":-88,"head":-92,"wrN":[98,44],"wrF":[98,44],"anN":[104,182],"anF":[104,182],"toeN":0,"toeF":0},"away":{"hip":[96,121],"torso":-88,"head":-92,"wrN":[104,76],"wrF":[104,76],"anN":[104,182],"anF":[104,182],"toeN":0,"toeF":0},"poleElbN":0,"poleElbF":0,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"db-ohp":{"setup":"Seated with the back supported, dumbbells at ear height, elbows under.","label":"Dumbbell Shoulder Press","view":"side","scene":"benchUpright","load":"db","ph":["LOWER","PRESS"],"pole":{"elb":90,"knee":0},"toe":0,"home":{"hip":[96,138],"torso":-84,"head":-88,"wrN":[100,62],"wrF":[100,62],"anN":[118,182],"anF":[118,182],"toeN":0,"toeF":0},"away":{"hip":[96,138],"torso":-84,"head":-88,"wrN":[106,92],"wrF":[106,92],"anN":[118,182],"anF":[118,182],"toeN":0,"toeF":0},"poleElbN":90,"poleElbF":90,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"machine-ohp":{"setup":"Set the seat so the handles start at shoulder level, back on the pad.","label":"Machine Shoulder Press","view":"side","scene":"machineOHP","load":"handle","ph":["LOWER","PRESS"],"pole":{"elb":90,"knee":0},"toe":0,"home":{"hip":[78,138],"torso":-86,"head":-90,"wrN":[82,62],"wrF":[82,62],"anN":[112,182],"anF":[112,182],"toeN":0,"toeF":0},"away":{"hip":[78,138],"torso":-86,"head":-90,"wrN":[88,92],"wrF":[88,92],"anN":[112,182],"anF":[112,182],"toeN":0,"toeF":0},"poleElbN":90,"poleElbF":90,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"lateral":{"setup":"Light dumbbells at the sides, slight elbow bend, torso completely still.","label":"Lateral Raise","view":"front","scene":"floor","load":"db","ph":["LOWER","RAISE"],"pole":{"elb":90,"knee":0},"toe":-14,"home":{"hip":[100,121],"torso":-90,"head":-90,"wrN":[110,126],"wrF":[90,126],"anN":[108,181],"anF":[92,181],"toeN":-14,"toeF":194},"away":{"hip":[100,121],"torso":-90,"head":-90,"wrN":[142,86],"wrF":[58,86],"anN":[108,181],"anF":[92,181],"toeN":-14,"toeF":194},"poleElbN":90,"poleElbF":90,"poleKneeN":0,"poleKneeF":180,"toeN":-14,"toeF":194},"pike-pushup":{"setup":"Hands and feet down, hips piked high, head between the hands.","label":"Pike Push-Up","view":"side","scene":"floor","load":null,"ph":["LOWER","PRESS"],"pole":{"elb":-30,"knee":150},"toe":26,"home":{"hip":[98,119],"torso":145,"head":149,"wrN":[60,180],"wrF":[60,180],"anN":[100,178],"anF":[100,178],"toeN":26,"toeF":26},"away":{"hip":[98,123],"torso":124,"head":128,"wrN":[60,180],"wrF":[60,180],"anN":[100,178],"anF":[100,178],"toeN":26,"toeF":26},"poleElbN":-30,"poleElbF":-30,"poleKneeN":150,"poleKneeF":150,"toeN":26,"toeF":26},"curl":{"setup":"Stand tall, underhand grip shoulder-width, elbows pinned to the sides.","label":"Barbell Curl","view":"side","scene":"floor","load":"bar","ph":["LOWER","CURL"],"pole":{"elb":90,"knee":0},"toe":0,"home":{"hip":[96,121],"torso":-88,"head":-92,"wrN":[108,96],"wrF":[108,96],"anN":[104,182],"anF":[104,182],"toeN":0,"toeF":0},"away":{"hip":[96,121],"torso":-88,"head":-92,"wrN":[106,124],"wrF":[106,124],"anN":[104,182],"anF":[104,182],"toeN":0,"toeF":0},"poleElbN":90,"poleElbF":90,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"hammer":{"setup":"Neutral grip, thumbs up, elbows pinned to the sides.","label":"Hammer Curl","view":"side","scene":"floor","load":"db","ph":["LOWER","CURL"],"pole":{"elb":90,"knee":0},"toe":0,"home":{"hip":[96,121],"torso":-88,"head":-92,"wrN":[104,96],"wrF":[104,96],"anN":[104,182],"anF":[104,182],"toeN":0,"toeF":0},"away":{"hip":[96,121],"torso":-88,"head":-92,"wrN":[102,124],"wrF":[102,124],"anN":[104,182],"anF":[104,182],"toeN":0,"toeF":0},"poleElbN":90,"poleElbF":90,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"cable-curl":{"setup":"Pulley low, elbows pinned, step back until the cable is under tension.","label":"Cable Curl","view":"side","scene":"cableLow","load":"bar","ph":["LOWER","CURL"],"pole":{"elb":90,"knee":0},"toe":0,"home":{"hip":[92,121],"torso":-88,"head":-92,"wrN":[112,100],"wrF":[112,100],"anN":[100,182],"anF":[100,182],"toeN":0,"toeF":0},"away":{"hip":[92,121],"torso":-88,"head":-92,"wrN":[108,124],"wrF":[108,124],"anN":[100,182],"anF":[100,182],"toeN":0,"toeF":0},"poleElbN":90,"poleElbF":90,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"preacher":{"setup":"Armpits on the top of the pad, elbows in the same spot every rep.","label":"Preacher Curl","view":"side","scene":"preacher","load":"bar","ph":["LOWER","CURL"],"pole":{"elb":90,"knee":0},"toe":0,"home":{"hip":[92,136],"torso":-80,"head":-84,"wrN":[116,96],"wrF":[116,96],"anN":[112,182],"anF":[112,182],"toeN":0,"toeF":0},"away":{"hip":[92,136],"torso":-80,"head":-84,"wrN":[128,124],"wrF":[128,124],"anN":[112,182],"anF":[112,182],"toeN":0,"toeF":0},"poleElbN":90,"poleElbF":90,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"pushdown":{"setup":"Pulley high, elbows pinned to the ribs, hinge forward very slightly.","label":"Triceps Pushdown","view":"side","scene":"cableHigh","load":"handle","ph":["RETURN","PUSH"],"pole":{"elb":0,"knee":0},"toe":0,"home":{"hip":[92,121],"torso":-86,"head":-90,"wrN":[106,126],"wrF":[106,126],"anN":[100,182],"anF":[100,182],"toeN":0,"toeF":0},"away":{"hip":[92,121],"torso":-86,"head":-90,"wrN":[100,98],"wrF":[100,98],"anN":[100,182],"anF":[100,182],"toeN":0,"toeF":0},"poleElbN":0,"poleElbF":0,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"skull":{"setup":"Lying flat, bar over the forehead, elbows pointing straight up.","label":"Skullcrusher","view":"side","scene":"benchFlat","load":"bar","ph":["LOWER","EXTEND"],"pole":{"elb":-90,"knee":0},"toe":0,"home":{"hip":[106,135],"torso":180,"head":176,"wrN":[72,92],"wrF":[72,92],"anN":[138,182],"anF":[138,182],"toeN":0,"toeF":0},"away":{"hip":[106,135],"torso":180,"head":176,"wrN":[52,120],"wrF":[52,120],"anN":[138,182],"anF":[138,182],"toeN":0,"toeF":0},"poleElbN":-90,"poleElbF":-90,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"db-ext":{"setup":"One dumbbell overhead in both hands, elbows close to the ears.","label":"Overhead Triceps Extension","view":"side","scene":"floor","load":"db1","ph":["LOWER","EXTEND"],"pole":{"elb":-90,"knee":0},"toe":0,"home":{"hip":[96,121],"torso":-88,"head":-92,"wrN":[98,44],"wrF":[98,44],"anN":[104,182],"anF":[104,182],"toeN":0,"toeF":0},"away":{"hip":[96,121],"torso":-88,"head":-92,"wrN":[74,72],"wrF":[74,72],"anN":[104,182],"anF":[104,182],"toeN":0,"toeF":0},"poleElbN":-90,"poleElbF":-90,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"squat":{"setup":"Bar on the upper traps, feet shoulder-width, toes turned slightly out.","label":"Back Squat","view":"side","scene":"rack","load":"bar","ph":["DESCEND","DRIVE"],"pole":{"elb":120,"knee":0},"toe":0,"home":{"hip":[100,126],"torso":-90,"head":-92,"wrN":[86,92],"wrF":[86,92],"anN":[106,182],"anF":[106,182],"toeN":0,"toeF":0},"away":{"hip":[88,158],"torso":-70,"head":-72,"wrN":[86,126],"wrF":[86,126],"anN":[106,182],"anF":[106,182],"toeN":0,"toeF":0},"poleElbN":120,"poleElbF":120,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"hack":{"setup":"Back and shoulders against the pads, whole foot planted on the platform.","label":"Hack Squat","view":"side","scene":"hackSled","load":null,"ph":["DESCEND","DRIVE"],"pole":{"elb":120,"knee":0},"toe":0,"home":{"hip":[104,134],"torso":-104,"head":-100,"wrN":[96,132],"wrF":[96,132],"anN":[112,172],"anF":[112,172],"toeN":0,"toeF":0},"away":{"hip":[92,162],"torso":-96,"head":-94,"wrN":[88,158],"wrF":[88,158],"anN":[112,172],"anF":[112,172],"toeN":0,"toeF":0},"poleElbN":120,"poleElbF":120,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"deadlift":{"setup":"Bar over mid-foot, shins close, overhand grip outside the knees.","label":"Conventional Deadlift","view":"side","scene":"floor","load":"bar","ph":["SET","LIFT"],"pole":{"elb":90,"knee":20},"toe":0,"home":{"hip":[100,126],"torso":-86,"head":-88,"wrN":[104,131],"wrF":[104,131],"anN":[102,182],"anF":[102,182],"toeN":0,"toeF":0},"away":{"hip":[84,162],"torso":-54,"head":-62,"wrN":[104,175],"wrF":[104,175],"anN":[102,182],"anF":[102,182],"toeN":0,"toeF":0},"poleElbN":90,"poleElbF":90,"poleKneeN":20,"poleKneeF":20,"toeN":0,"toeF":0},"rdl":{"setup":"Stand tall, overhand grip at the hips, knees unlocked but fixed.","label":"Romanian Deadlift","view":"side","scene":"floor","load":"bar","ph":["HINGE","STAND"],"pole":{"elb":90,"knee":20},"toe":0,"home":{"hip":[100,124],"torso":-88,"head":-90,"wrN":[104,129],"wrF":[104,129],"anN":[102,182],"anF":[102,182],"toeN":0,"toeF":0},"away":{"hip":[78,134],"torso":-52,"head":-60,"wrN":[104,148],"wrF":[104,148],"anN":[102,182],"anF":[102,182],"toeN":0,"toeF":0},"poleElbN":90,"poleElbF":90,"poleKneeN":20,"poleKneeF":20,"toeN":0,"toeF":0},"hipthrust":{"setup":"Upper back on the bench, feet flat and shoulder-width, chin tucked.","label":"Hip Thrust","view":"side","scene":"benchShoulder","load":"bar","loadAt":"hip","ph":["LOWER","DRIVE"],"pole":{"elb":90,"knee":0},"toe":0,"home":{"hip":[106,150],"torso":180,"head":178,"wrN":[108,146],"wrF":[108,146],"anN":[140,182],"anF":[140,182],"toeN":0,"toeF":0},"away":{"hip":[102,166],"torso":-153,"head":178,"wrN":[104,162],"wrF":[104,162],"anN":[140,182],"anF":[140,182],"toeN":0,"toeF":0},"poleElbN":90,"poleElbF":90,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"legpress":{"setup":"Back and hips flat on the pad, feet shoulder-width, whole foot on it.","label":"Leg Press","view":"side","scene":"legPress","load":null,"ph":["RETURN","PRESS"],"pole":{"elb":90,"knee":-40},"toe":0,"home":{"hip":[96,140],"torso":-152,"head":-160,"wrN":[96,146],"wrF":[96,146],"anN":[142,98],"anF":[142,98],"toeN":0,"toeF":0},"away":{"hip":[96,140],"torso":-152,"head":-160,"wrN":[96,146],"wrF":[96,146],"anN":[104,124],"anF":[104,124],"toeN":0,"toeF":0},"poleElbN":90,"poleElbF":90,"poleKneeN":-40,"poleKneeF":-40,"toeN":0,"toeF":0},"bulgarian":{"setup":"Rear foot on the bench, front foot forward enough to keep the heel down.","label":"Bulgarian Split Squat","view":"side","scene":"benchBehind","load":"db","ph":["DESCEND","DRIVE"],"pole":{"elb":90,"knee":0},"toe":0,"poleF":{"elb":90,"knee":180},"home":{"hip":[104,128],"torso":-88,"head":-90,"wrN":[110,130],"wrF":[110,130],"anN":[112,182],"anF":[62,146],"toeN":0,"toeF":0},"away":{"hip":[104,152],"torso":-80,"head":-82,"wrN":[116,154],"wrF":[116,154],"anN":[112,182],"anF":[62,146],"toeN":0,"toeF":0},"poleElbN":90,"poleElbF":90,"poleKneeN":0,"poleKneeF":180,"toeN":0,"toeF":0},"lunge":{"setup":"Long stride, torso tall, back knee tracking down toward the floor.","label":"Walking Lunge","view":"side","scene":"floor","load":"db","ph":["DESCEND","DRIVE"],"pole":{"elb":90,"knee":0},"toe":0,"poleF":{"elb":90,"knee":180},"home":{"hip":[96,126],"torso":-88,"head":-90,"wrN":[102,128],"wrF":[102,128],"anN":[122,182],"anF":[62,178],"toeN":0,"toeF":0},"away":{"hip":[96,152],"torso":-84,"head":-86,"wrN":[104,154],"wrF":[104,154],"anN":[122,182],"anF":[62,178],"toeN":0,"toeF":0},"poleElbN":90,"poleElbF":90,"poleKneeN":0,"poleKneeF":180,"toeN":0,"toeF":0},"legcurl":{"setup":"Knees just past the pad edge, hips down against the bench.","label":"Lying Leg Curl","view":"side","scene":"legCurl","load":null,"ph":["LOWER","CURL"],"pole":{"elb":90,"knee":-90},"toe":0,"home":{"hip":[100,130],"torso":178,"head":172,"wrN":[92,142],"wrF":[92,142],"anN":[126,110],"anF":[126,110],"toeN":0,"toeF":0},"away":{"hip":[100,130],"torso":178,"head":172,"wrN":[92,142],"wrF":[92,142],"anN":[132,152],"anF":[132,152],"toeN":0,"toeF":0},"poleElbN":90,"poleElbF":90,"poleKneeN":-90,"poleKneeF":-90,"toeN":0,"toeF":0},"legext":{"setup":"Line the knee up with the machine pivot, pad on the lower shin.","label":"Leg Extension","view":"side","scene":"legExt","load":null,"ph":["LOWER","EXTEND"],"pole":{"elb":90,"knee":-20},"toe":0,"home":{"hip":[62,126],"torso":-86,"head":-90,"wrN":[76,130],"wrF":[76,130],"anN":[112,100],"anF":[112,100],"toeN":0,"toeF":0},"away":{"hip":[62,126],"torso":-86,"head":-90,"wrN":[76,130],"wrF":[76,130],"anN":[104,130],"anF":[104,130],"toeN":0,"toeF":0},"poleElbN":90,"poleElbF":90,"poleKneeN":-20,"poleKneeF":-20,"toeN":0,"toeF":0},"calf":{"setup":"Shoulders under the yoke, balls of the feet on the block, knees straight.","label":"Standing Calf Raise","view":"side","scene":"calfMachine","load":null,"ph":["LOWER","RAISE"],"pole":{"elb":90,"knee":0},"toe":0,"home":{"hip":[96,116],"torso":-88,"head":-92,"wrN":[100,88],"wrF":[100,88],"anN":[104,174],"anF":[104,174],"toeN":-25,"toeF":0},"away":{"hip":[96,105],"torso":-88,"head":-92,"wrN":[100,77],"wrF":[100,77],"anN":[104,163],"anF":[104,163],"toeN":25,"toeF":0},"poleElbN":90,"poleElbF":90,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"air-squat":{"setup":"Feet shoulder-width, toes slightly out, arms forward as a counterweight.","label":"Bodyweight Squat","view":"side","scene":"floor","load":null,"ph":["DESCEND","DRIVE"],"pole":{"elb":90,"knee":0},"toe":0,"home":{"hip":[100,126],"torso":-90,"head":-92,"wrN":[126,104],"wrF":[126,104],"anN":[106,182],"anF":[106,182],"toeN":0,"toeF":0},"away":{"hip":[88,158],"torso":-70,"head":-72,"wrN":[130,132],"wrF":[130,132],"anN":[106,182],"anF":[106,182],"toeN":0,"toeF":0},"poleElbN":90,"poleElbF":90,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"bw-split":{"setup":"Split long enough that the front heel stays down at the bottom.","label":"Bodyweight Split Squat","view":"side","scene":"floor","load":null,"ph":["DESCEND","DRIVE"],"pole":{"elb":0,"knee":0},"toe":0,"poleF":{"elb":0,"knee":180},"home":{"hip":[100,128],"torso":-88,"head":-90,"wrN":[106,130],"wrF":[106,130],"anN":[122,182],"anF":[64,176],"toeN":0,"toeF":0},"away":{"hip":[100,154],"torso":-82,"head":-84,"wrN":[110,156],"wrF":[110,156],"anN":[122,182],"anF":[64,176],"toeN":0,"toeF":0},"poleElbN":0,"poleElbF":0,"poleKneeN":0,"poleKneeF":180,"toeN":0,"toeF":0},"bridge":{"setup":"On your back, feet flat and close to the glutes, heels driving down.","label":"Glute Bridge","view":"side","scene":"floor","load":null,"ph":["LOWER","DRIVE"],"pole":{"elb":90,"knee":0},"toe":0,"home":{"hip":[92,142],"torso":180,"head":170,"wrN":[70,168],"wrF":[70,168],"anN":[130,182],"anF":[130,182],"toeN":0,"toeF":0},"away":{"hip":[88,160],"torso":-151,"head":170,"wrN":[70,168],"wrF":[70,168],"anN":[130,182],"anF":[130,182],"toeN":0,"toeF":0},"poleElbN":90,"poleElbF":90,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"bw-calf":{"setup":"Ball of one foot on the step, other foot tucked behind, hand on the rail.","label":"Single-Leg Calf Raise","view":"side","scene":"stepEdge","load":null,"ph":["LOWER","RAISE"],"pole":{"elb":90,"knee":0},"toe":0,"home":{"hip":[86,104],"torso":-88,"head":-92,"wrN":[80,78],"wrF":[80,78],"anN":[96,164],"anF":[96,164],"toeN":-40,"toeF":0},"away":{"hip":[86,93],"torso":-88,"head":-92,"wrN":[80,67],"wrF":[80,67],"anN":[96,153],"anF":[96,153],"toeN":40,"toeF":0},"poleElbN":90,"poleElbF":90,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0},"plank":{"setup":"Elbows under the shoulders, forearms down, one line, glutes braced.","label":"Plank","view":"side","scene":"floor","load":null,"ph":["HOLD","BRACE"],"pole":{"elb":90,"knee":100},"toe":30,"home":{"hip":[98,166],"torso":-167.5,"head":-166,"wrN":[74,181],"wrF":[74,181],"anN":[142,176],"anF":[142,176],"toeN":30,"toeF":30},"away":{"hip":[98,163],"torso":-167.5,"head":-166,"wrN":[74,181],"wrF":[74,181],"anN":[142,173],"anF":[142,173],"toeN":30,"toeF":30},"poleElbN":90,"poleElbF":90,"poleKneeN":100,"poleKneeF":100,"toeN":30,"toeF":30},"hlr":{"setup":"Hang from the bar, shoulders active, legs together, no swing.","label":"Hanging Leg Raise","view":"side","scene":"pullupBar","load":null,"ph":["LOWER","RAISE"],"pole":{"elb":0,"knee":170},"toe":100,"home":{"hip":[88,98],"torso":-86,"head":-88,"wrN":[82,22],"wrF":[82,22],"anN":[148,102],"anF":[148,102],"toeN":100,"toeF":100},"away":{"hip":[88,98],"torso":-86,"head":-88,"wrN":[82,22],"wrF":[82,22],"anN":[92,160],"anF":[92,160],"toeN":100,"toeF":100},"poleElbN":0,"poleElbF":0,"poleKneeN":170,"poleKneeF":170,"toeN":100,"toeF":100},"crunch":{"setup":"Kneel under the high pulley, rope beside the head, hips fixed.","label":"Cable Crunch","view":"side","scene":"cableHigh","load":null,"ph":["RELEASE","CRUNCH"],"pole":{"elb":90,"knee":0},"toe":170,"home":{"hip":[96,158],"torso":-92,"head":-96,"wrN":[94,116],"wrF":[94,116],"anN":[91,178],"anF":[91,178],"toeN":170,"toeF":170},"away":{"hip":[96,158],"torso":-50,"head":-56,"wrN":[110,124],"wrF":[110,124],"anN":[91,178],"anF":[91,178],"toeN":170,"toeF":170},"poleElbN":90,"poleElbF":90,"poleKneeN":0,"poleKneeF":0,"toeN":170,"toeF":170},"situp":{"setup":"Knees bent, feet flat and anchored, hands light behind the head.","label":"Sit-Up","view":"side","scene":"floor","load":null,"ph":["LOWER","CURL UP"],"pole":{"elb":90,"knee":0},"toe":0,"home":{"hip":[88,166],"torso":-86,"head":-88,"wrN":[84,118],"wrF":[84,118],"anN":[134,182],"anF":[134,182],"toeN":0,"toeF":0},"away":{"hip":[88,166],"torso":176,"head":172,"wrN":[46,162],"wrF":[46,162],"anN":[134,182],"anF":[134,182],"toeN":0,"toeF":0},"poleElbN":90,"poleElbF":90,"poleKneeN":0,"poleKneeF":0,"toeN":0,"toeF":0}};
+const V5_DEMOS={"bench":{"setup":"Eyes under the bar, shoulder blades pinched, feet driving into the floor.","label":"Barbell Bench Press","view":"side","scene":"benchFlat","load":"bar","ph":["DESCEND","PRESS UP"],"pole":{"elb":90,"knee":-90},"toe":0,"home":{"hip":[128,136],"torso":180,"head":174,"wr":[94,95],"an":[136,182]},"away":{"hip":[128,136],"torso":180,"head":174,"wr":[86,118],"an":[136,182]}},"db-bench":{"setup":"Sit with the bells on your thighs, kick them back as you lie flat.","label":"Dumbbell Bench Press","view":"side","scene":"benchFlat","load":"db","ph":["LOWER","PRESS"],"pole":{"elb":90,"knee":-90},"toe":0,"home":{"hip":[128,136],"torso":180,"head":174,"wrN":[93,94],"wrF":[88,97],"an":[136,182]},"away":{"hip":[128,136],"torso":180,"head":174,"wrN":[84,120],"wrF":[79,122],"an":[136,182]}},"incline-db":{"setup":"Bench at 30 degrees, feet planted, bells delivered over the elbows.","label":"Incline Dumbbell Press","view":"side","scene":"benchIncline","load":"db","ph":["LOWER","PRESS"],"pole":{"elb":90,"knee":-90},"toe":0,"home":{"hip":[116,150],"torso":-120,"head":-130,"wrN":[92,80],"wrF":[87,83],"an":[142,180]},"away":{"hip":[116,150],"torso":-120,"head":-130,"wrN":[88,126],"wrF":[83,128],"an":[142,180]}},"machine-press":{"setup":"Seat height puts the handles at mid-chest; head and back on the pad.","label":"Machine Chest Press","view":"side","scene":"machinePress","load":"handle","ph":["RETURN","PRESS"],"pole":{"elb":90,"knee":0},"toe":0,"home":{"hip":[112,141],"torso":-100,"head":-95,"wr":[146,103],"an":[134,180]},"away":{"hip":[112,141],"torso":-100,"head":-95,"wr":[122,118],"an":[134,180]}},"cable-fly":{"setup":"Pulleys at chest height, one foot back, soft fixed elbows, lean in a touch.","label":"Cable Chest Fly","view":"front","scene":"cableDual","load":"handle","ph":["OPEN","SQUEEZE"],"pole":{"elb":90,"knee":90},"toe":10,"home":{"hip":[100,119],"torso":-90,"head":-90,"wrN":[95,118],"wrF":[105,118],"anN":[92,180],"anF":[108,180]},"away":{"hip":[100,119],"torso":-90,"head":-90,"wrN":[60,96],"wrF":[140,96],"anN":[92,180],"anF":[108,180]}},"pecdec":{"setup":"Seat so the handles level with the shoulders, arms barely bent.","label":"Machine Chest Fly","view":"front","scene":"pecDec","load":"handle","ph":["OPEN","SQUEEZE"],"pole":{"elb":90,"knee":90},"toe":10,"home":{"hip":[100,140],"torso":-90,"head":-90,"wrN":[94,112],"wrF":[106,112],"anN":[90,180],"anF":[110,180]},"away":{"hip":[100,140],"torso":-90,"head":-90,"wrN":[62,100],"wrF":[138,100],"anN":[90,180],"anF":[110,180]}},"pushup":{"setup":"Hands just outside the ribs, screw them into the floor, squeeze the glutes.","label":"Push-Up","view":"side","scene":"floor","load":null,"ph":["DESCEND","PRESS UP"],"pole":{"elb":0,"knee":0},"toe":15,"home":{"hip":[120,140],"torso":-178,"head":178,"wr":[84,181],"an":[150,179]},"away":{"hip":[120,155],"torso":-178,"head":178,"wr":[84,181],"an":[150,179]}},"dip":{"setup":"Grip the bars, shrug down, hang with a small forward lean before rep one.","label":"Dip","view":"side","scene":"dipBars","load":null,"ph":["DESCEND","PRESS UP"],"pole":{"elb":-10,"knee":105},"toe":20,"home":{"hip":[120,150],"torso":-100,"head":-95,"wr":[112,156],"an":[142,166]},"away":{"hip":[120,164],"torso":-110,"head":-105,"wr":[112,156],"an":[142,166]}},"row":{"setup":"Shins vertical, hinge to 45 degrees, bar hanging under the shoulders.","label":"Barbell Row","view":"side","scene":"floor","load":"bar","ph":["LOWER","ROW"],"pole":{"elb":0,"knee":180},"toe":0,"home":{"hip":[108,119],"torso":-135,"head":-160,"wr":[86,108],"an":[122,178]},"away":{"hip":[108,119],"torso":-135,"head":-160,"wr":[80,136],"an":[122,178]}},"db-row":{"setup":"Left hand and knee on the bench, square the hips, let the bell hang long.","label":"Dumbbell Row","view":"side","scene":"benchRow","load":"db1","ph":["LOWER","ROW"],"pole":{"elb":0,"knee":-25},"poleF":{"knee":180},"toe":0,"home":{"hip":[126,128],"torso":-171,"head":-178,"wr":[96,120],"wrF":[98,144],"anN":[136,152],"anF":[150,180]},"away":{"hip":[126,128],"torso":-171,"head":-178,"wr":[102,164],"wrF":[98,144],"anN":[136,152],"anF":[150,180]}},"machine-row":{"setup":"Chest tall against the pad, grab the handles, arms fully out first.","label":"Machine Row","view":"side","scene":"machineRow","load":"handle","ph":["REACH","PULL"],"pole":{"elb":75,"knee":-30},"toe":0,"home":{"hip":[116,140],"torso":-90,"head":-90,"wr":[130,110],"an":[140,179]},"away":{"hip":[116,140],"torso":-90,"head":-90,"wr":[156,106],"an":[140,179]}},"cablerow":{"setup":"Sit tall, feet on the platform, take the handle with a long straight back.","label":"Seated Cable Row","view":"side","scene":"cableLow","load":"handle","ph":["REACH","PULL"],"pole":{"elb":75,"knee":-45},"toe":0,"home":{"hip":[106,138],"torso":-85,"head":-88,"wr":[84,120],"an":[150,178]},"away":{"hip":[106,138],"torso":-115,"head":-120,"wr":[58,108],"an":[150,178]}},"pulldown":{"setup":"Thighs snug under the pads, hands a thumb outside the shoulders.","label":"Lat Pulldown","view":"side","scene":"cableHigh","load":"pullbar","ph":["RISE","PULL"],"pole":{"elb":90,"knee":-90},"toe":0,"home":{"hip":[112,138],"torso":-100,"head":-105,"wr":[100,112],"an":[140,179]},"away":{"hip":[112,138],"torso":-88,"head":-90,"wr":[106,60],"an":[140,179]}},"pullup":{"setup":"Overhand grip just outside the shoulders, start from a dead hang.","label":"Pull-Up","view":"side","scene":"pullupBar","load":null,"ph":["LOWER","PULL"],"pole":{"elb":0,"knee":160},"toe":20,"home":{"hip":[104,120],"torso":-85,"head":-90,"wr":[110,51],"an":[126,152]},"away":{"hip":[110,129.4],"torso":-90,"head":-90,"wr":[110,51],"an":[126,152]}},"chinup":{"setup":"Underhand grip at shoulder width, hang tall, legs still.","label":"Chin-Up","view":"side","scene":"pullupBar","load":null,"ph":["LOWER","PULL"],"pole":{"elb":0,"knee":160},"toe":20,"home":{"hip":[104,119],"torso":-82,"head":-86,"wr":[110,51],"an":[126,152]},"away":{"hip":[110,129.4],"torso":-90,"head":-90,"wr":[110,51],"an":[126,152]}},"facepull":{"setup":"Rope at eye height, step back to tension, thumbs pointing back.","label":"Face Pull","view":"side","scene":"cableFace","load":null,"ph":["REACH","PULL"],"pole":{"elb":300,"knee":180},"toe":0,"home":{"hip":[102,119],"torso":-90,"head":-90,"wr":[88,76],"anN":[113,179],"anF":[110,177]},"away":{"hip":[102,119],"torso":-90,"head":-90,"wr":[140,80],"anN":[113,179],"anF":[110,177]}},"aus-row":{"setup":"Bar at hip height, heels planted, body one plank line under it.","label":"Inverted Row","view":"side","scene":"lowBar","load":null,"ph":["LOWER","ROW"],"pole":{"elb":0,"knee":0},"toe":0,"home":{"hip":[114.9,135.7],"torso":-133.5,"head":-148,"wr":[100,120],"an":[158,181]},"away":{"hip":[99.9,157.5],"torso":-158,"head":-172,"wr":[100,120],"an":[158,181]}},"ohp":{"setup":"Bar on the front delts, elbows just ahead of it, glutes squeezed.","label":"Overhead Press","view":"side","scene":"floor","load":"bar","ph":["LOWER","PRESS"],"pole":{"elb":215,"knee":180},"toe":0,"home":{"hip":[104,118],"torso":-90,"head":-90,"wr":[100,40],"an":[113,179]},"away":{"hip":[104,118],"torso":-90,"head":-90,"wr":[96,92],"an":[113,179]}},"db-ohp":{"setup":"Seated tall against the pad, bells at ear height, elbows under them.","label":"Dumbbell Shoulder Press","view":"side","scene":"benchUpright","load":"db","ph":["LOWER","PRESS"],"pole":{"elb":215,"knee":-25},"toe":0,"home":{"hip":[118,136],"torso":-95,"head":-95,"wr":[110,58],"an":[140,180]},"away":{"hip":[118,136],"torso":-95,"head":-95,"wr":[104,94],"an":[140,180]}},"machine-ohp":{"setup":"Seat set so the handles start level with the top of the shoulders.","label":"Machine Shoulder Press","view":"side","scene":"machineOHP","load":"handle","ph":["LOWER","PRESS"],"pole":{"elb":215,"knee":-25},"toe":0,"home":{"hip":[116,138],"torso":-95,"head":-95,"wr":[114,60],"an":[142,180]},"away":{"hip":[116,138],"torso":-95,"head":-95,"wr":[122,97],"an":[142,180]}},"lateral":{"setup":"A pair of light bells at the sides, palms in, small bend fixed in the elbows.","label":"Lateral Raise","view":"front","scene":"floor","load":"db","ph":["LOWER","RAISE"],"pole":{"elb":90,"knee":90},"toe":10,"home":{"hip":[100,119],"torso":-90,"head":-90,"wrN":[58,84],"wrF":[142,84],"anN":[90,180],"anF":[110,180]},"away":{"hip":[100,119],"torso":-90,"head":-90,"wrN":[88,124],"wrF":[112,124],"anN":[90,180],"anF":[110,180]}},"pike-pushup":{"setup":"Walk the feet in until the hips stack over the shoulders, hands under the face.","label":"Pike Push-Up","view":"side","scene":"floor","load":null,"ph":["DESCEND","PRESS UP"],"pole":{"elb":0,"knee":0},"toe":10,"home":{"hip":[127,116],"torso":140,"head":155,"wr":[100,181],"an":[134,176]},"away":{"hip":[123.5,132.5],"torso":135,"head":150,"wr":[100,181],"an":[134,176]}},"curl":{"setup":"Shoulder-width underhand grip, elbows touching the ribs the whole set.","label":"Barbell Curl","view":"side","scene":"floor","load":"bar","ph":["EXTEND","CURL"],"pole":{"elb":45,"knee":180},"toe":0,"home":{"hip":[102,119],"torso":-90,"head":-90,"wr":[86,97],"an":[113,179]},"away":{"hip":[102,119],"torso":-90,"head":-90,"wr":[98,124],"an":[113,179]}},"hammer":{"setup":"Bells held vertically like hammers, thumbs up, elbows glued to the sides.","label":"Hammer Curl","view":"side","scene":"floor","load":"db","ph":["EXTEND","CURL"],"pole":{"elb":45,"knee":180},"toe":0,"home":{"hip":[102,119],"torso":-90,"head":-90,"wr":[87,98],"an":[113,179]},"away":{"hip":[102,119],"torso":-90,"head":-90,"wr":[99,125],"an":[113,179]}},"cable-curl":{"setup":"Low pulley, step back until the cable pulls taut, elbows pinned.","label":"Cable Curl","view":"side","scene":"cableLow","load":"bar","ph":["EXTEND","CURL"],"pole":{"elb":45,"knee":180},"toe":0,"home":{"hip":[102,119],"torso":-90,"head":-90,"wr":[87,99],"an":[113,179]},"away":{"hip":[102,119],"torso":-90,"head":-90,"wr":[84,116],"an":[113,179]}},"preacher":{"setup":"Armpits over the top of the pad, upper arms flat on it, elbows level.","label":"Preacher Curl","view":"side","scene":"preacher","load":"bar","ph":["EXTEND","CURL"],"pole":{"elb":315,"knee":180},"toe":0,"home":{"hip":[128,152],"torso":-105,"head":-110,"wr":[98,104],"an":[140,181]},"away":{"hip":[128,152],"torso":-105,"head":-110,"wr":[94,142],"an":[140,181]}},"pushdown":{"setup":"High pulley, elbows locked to the ribs, cable taut before the first rep.","label":"Triceps Pushdown","view":"side","scene":"cableHigh","load":"handle","ph":["RETURN","PRESS DOWN"],"pole":{"elb":45,"knee":180},"toe":0,"home":{"hip":[102,119],"torso":-90,"head":-90,"wr":[114,124],"an":[113,179]},"away":{"hip":[102,119],"torso":-96,"head":-92,"wr":[122,98],"an":[113,179]}},"skull":{"setup":"Lie flat, bar held over the shoulders, elbows pointing at the ceiling.","label":"Skullcrusher","view":"side","scene":"benchFlat","load":"bar","ph":["LOWER","EXTEND"],"pole":{"elb":315,"knee":-90},"toe":0,"home":{"hip":[128,136],"torso":180,"head":174,"wr":[88,95],"an":[136,182]},"away":{"hip":[128,136],"torso":180,"head":174,"wr":[76,120],"an":[136,182]}},"db-ext":{"setup":"One bell in both hands overhead, elbows narrow, ribs down.","label":"Overhead Triceps Extension","view":"side","scene":"floor","load":"db1","ph":["LOWER","EXTEND"],"pole":{"elb":300,"knee":180},"toe":0,"home":{"hip":[102,119],"torso":-90,"head":-90,"wr":[98,42],"an":[113,179]},"away":{"hip":[102,119],"torso":-90,"head":-90,"wr":[84,74],"an":[113,179]}},"squat":{"setup":"Bar on the upper traps, hands pulling it into the back, feet screwed out.","label":"Back Squat","view":"side","scene":"rack","load":"bar","ph":["DESCEND","DRIVE"],"pole":{"elb":0,"knee":180},"toe":0,"home":{"hip":[102,118],"torso":-90,"head":-90,"wr":[95,89],"an":[112,179]},"away":{"hip":[100,144],"torso":-108,"head":-125,"wr":[82,116],"an":[112,179]}},"hack":{"setup":"Shoulders and back flat on the pads, feet high and shoulder-width on the plate.","label":"Hack Squat","view":"side","scene":"hackSled","load":null,"ph":["DESCEND","DRIVE"],"pole":{"elb":0,"knee":180},"toe":0,"home":{"hip":[100,112],"torso":-115,"head":-125,"wr":[82,86],"an":[126,156]},"away":{"hip":[104,132],"torso":-118,"head":-128,"wr":[84,107],"an":[126,156]}},"deadlift":{"setup":"Bar over the middle of the foot, shins one inch away, chest up before the pull.","label":"Conventional Deadlift","view":"side","scene":"floor","load":"bar","ph":["LOWER","PULL"],"pole":{"elb":0,"knee":180},"toe":0,"home":{"hip":[110,118],"torso":-95,"head":-90,"wr":[107,125],"an":[117,180]},"away":{"hip":[122,122],"torso":145,"head":152,"wr":[112,178],"an":[117,180]}},"rdl":{"setup":"Stand tall, soft fixed knees, bar touching the thighs at the start.","label":"Romanian Deadlift","view":"side","scene":"floor","load":"bar","ph":["HINGE","STAND"],"pole":{"elb":0,"knee":180},"toe":0,"home":{"hip":[108,118],"torso":-92,"head":-90,"wr":[106,124],"an":[122,178]},"away":{"hip":[118,116],"torso":160,"head":172,"wr":[86,171],"an":[122,178]}},"hipthrust":{"setup":"Shoulder blades on the bench edge, bar over the hip crease, feet flat.","label":"Hip Thrust","view":"side","scene":"benchShoulder","load":"bar","loadAt":"hip","ph":["LOWER","DRIVE"],"pole":{"elb":0,"knee":-30},"toe":0,"home":{"hip":[130.8,140.7],"torso":165,"head":150,"wr":[124,129],"an":[158,182]},"away":{"hip":[125.2,171.1],"torso":-144,"head":-155,"wr":[119,160],"an":[158,182]}},"legpress":{"setup":"Hips and back flat, feet shoulder-width, whole foot on the platform.","label":"Leg Press","view":"side","scene":"legPress","load":null,"ph":["LOWER","PRESS"],"pole":{"elb":0,"knee":180},"toe":0,"home":{"hip":[110,142],"torso":-125,"head":-135,"wr":[116,144],"an":[168,150]},"away":{"hip":[110,142],"torso":-125,"head":-135,"wr":[116,144],"an":[126,160]}},"bulgarian":{"setup":"Front shin vertical, rear laces down on the bench, torso tall.","label":"Bulgarian Split Squat","view":"side","scene":"benchBehind","load":"db","ph":["DESCEND","DRIVE"],"pole":{"elb":0,"knee":180},"poleF":{"knee":-80},"toe":0,"home":{"hip":[104,126],"torso":-95,"head":-100,"wr":[100,132],"anN":[114,179],"anF":[66,142]},"away":{"hip":[102,150],"torso":-100,"head":-105,"wr":[92,156],"anN":[114,179],"anF":[66,142]}},"lunge":{"setup":"Long step, both knees bent at 90 at the bottom, torso stacked.","label":"Walking Lunge","view":"side","scene":"floor","load":"db","ph":["DESCEND","DRIVE"],"pole":{"elb":0,"knee":180},"poleF":{"knee":130},"toe":0,"toeF":20,"home":{"hip":[108,124],"torso":-90,"head":-90,"wr":[106,130],"anN":[106,180],"anF":[146,172]},"away":{"hip":[106,146],"torso":-88,"head":-90,"wr":[105,152],"anN":[106,180],"anF":[146,172]}},"legcurl":{"setup":"Pad hooked on the lower calf, hips glued down, knees past the bench edge.","label":"Lying Leg Curl","view":"side","scene":"legCurl","load":null,"ph":["EXTEND","CURL"],"pole":{"elb":0,"knee":-115},"toe":0,"home":{"hip":[110,131],"torso":180,"head":184,"wr":[64,138],"anN":[130,118],"anF":[134,122]},"away":{"hip":[110,131],"torso":180,"head":184,"wr":[64,138],"anN":[156,126],"anF":[158,130]}},"legext":{"setup":"Knee joint in line with the machine pivot, shinpads on the lower shin.","label":"Leg Extension","view":"side","scene":"legExt","load":null,"ph":["LOWER","EXTEND"],"pole":{"elb":0,"knee":180},"toe":0,"home":{"hip":[112,140],"torso":-95,"head":-90,"wr":[124,142],"an":[166,148]},"away":{"hip":[112,140],"torso":-95,"head":-90,"wr":[124,142],"an":[128,166]}},"calf":{"setup":"Yoke square on the shoulders, balls of the feet on the block, knees straight.","label":"Standing Calf Raise","view":"side","scene":"calfMachine","load":null,"ph":["LOWER","RAISE"],"pole":{"elb":0,"knee":180},"toe":35,"home":{"hip":[112,106],"torso":-90,"head":-90,"wr":[104,74],"anN":[118,164],"anF":[116,162],"toeN":35,"toeF":35},"away":{"hip":[112,99],"torso":-90,"head":-90,"wr":[104,67],"anN":[118,157],"anF":[116,155],"toeN":75,"toeF":75}},"air-squat":{"setup":"Feet shoulder-width, toes out a touch, arms forward as a counterweight.","label":"Bodyweight Squat","view":"side","scene":"floor","load":null,"ph":["DESCEND","DRIVE"],"pole":{"elb":0,"knee":180},"toe":0,"home":{"hip":[102,118],"torso":-90,"head":-90,"wr":[82,96],"an":[112,179]},"away":{"hip":[100,144],"torso":-106,"head":-118,"wr":[70,114],"an":[112,179]}},"bw-split":{"setup":"Long split, back knee under the hip, weight over the front mid-foot.","label":"Bodyweight Split Squat","view":"side","scene":"floor","load":null,"ph":["DESCEND","DRIVE"],"pole":{"elb":0,"knee":180},"poleF":{"knee":130},"toe":0,"toeF":20,"home":{"hip":[106,124],"torso":-92,"head":-95,"wr":[103,128],"anN":[110,180],"anF":[142,174]},"away":{"hip":[104,146],"torso":-96,"head":-100,"wr":[98,150],"anN":[110,180],"anF":[142,174]}},"bridge":{"setup":"Feet flat close to the glutes, arms at the sides, ribs down before lifting.","label":"Glute Bridge","view":"side","scene":"floor","load":null,"ph":["LOWER","DRIVE"],"pole":{"elb":0,"knee":-50},"toe":0,"home":{"hip":[106.4,147.9],"torso":142,"head":132,"wr":[93,181],"an":[134,181]},"away":{"hip":[112.1,171.8],"torso":177,"head":184,"wr":[95,181],"an":[134,181]}},"bw-calf":{"setup":"Ball of one foot on the step, heel free, fingertips on a rail for balance.","label":"Single-Leg Calf Raise","view":"side","scene":"stepEdge","load":null,"ph":["LOWER","RAISE"],"pole":{"elb":0,"knee":180},"toe":35,"home":{"hip":[112,96],"torso":-90,"head":-90,"wr":[104,100],"anN":[118,154],"anF":[108,158],"toeN":35,"toeF":-10},"away":{"hip":[112,89],"torso":-90,"head":-90,"wr":[104,93],"anN":[118,147],"anF":[108,151],"toeN":80,"toeF":-10}},"plank":{"setup":"Elbows under the shoulders, forearms flat, toes tucked, one line.","label":"Plank","view":"side","scene":"floor","load":null,"ph":["SET","HOLD"],"pole":{"elb":0,"knee":0},"toe":10,"home":{"hip":[122,150],"torso":-175,"head":178,"wr":[86,181],"an":[150,179]},"away":{"hip":[122,150],"torso":-172,"head":176,"wr":[86,181],"an":[150,179]}},"hlr":{"setup":"Grip the bar overhead, shoulders pulled down, legs together and straight.","label":"Hanging Leg Raise","view":"side","scene":"pullupBar","load":null,"ph":["LOWER","RAISE"],"pole":{"elb":0,"knee":180},"toe":180,"home":{"hip":[110,129.4],"torso":-90,"head":-90,"wr":[110,51],"anN":[48,129],"anF":[50,131]},"away":{"hip":[110,129.4],"torso":-90,"head":-90,"wr":[110,51],"anN":[112,181],"anF":[114,181]}},"crunch":{"setup":"Kneel facing away, rope held beside the ears, hips locked over the knees.","label":"Cable Crunch","view":"side","scene":"cableHigh","load":null,"ph":["EXTEND","CRUNCH"],"pole":{"elb":90,"knee":-30},"toe":15,"home":{"hip":[112,146],"torso":-150,"head":-160,"wr":[62,120],"an":[132,181]},"away":{"hip":[112,146],"torso":-100,"head":-105,"wr":[97,93],"an":[132,181]}},"situp":{"setup":"Knees bent, feet hooked or held, fingertips resting by the temples.","label":"Sit-Up","view":"side","scene":"floor","load":null,"ph":["LOWER","SIT UP"],"pole":{"elb":0,"knee":-45},"toe":0,"home":{"hip":[118,158],"torso":-135,"head":-145,"wr":[76,120],"an":[140,181]},"away":{"hip":[118,158],"torso":-176,"head":-180,"wr":[64,150],"an":[140,181]}}};
+const EXS=[{"id":"bench","n":"Barbell Bench Press","g":"Chest"},{"id":"db-bench","n":"Dumbbell Bench Press","g":"Chest"},{"id":"incline-db","n":"Incline Dumbbell Press","g":"Chest"},{"id":"machine-press","n":"Machine Chest Press","g":"Chest"},{"id":"cable-fly","n":"Cable Chest Fly","g":"Chest"},{"id":"pecdec","n":"Machine Chest Fly","g":"Chest"},{"id":"pushup","n":"Push-Up","g":"Chest"},{"id":"row","n":"Barbell Row","g":"Back"},{"id":"db-row","n":"Dumbbell Row","g":"Back"},{"id":"machine-row","n":"Machine Row","g":"Back"},{"id":"cablerow","n":"Seated Cable Row","g":"Back"},{"id":"pulldown","n":"Lat Pulldown","g":"Back"},{"id":"pullup","n":"Pull-Up","g":"Back"},{"id":"facepull","n":"Face Pull","g":"Back"},{"id":"ohp","n":"Overhead Press","g":"Shoulders"},{"id":"db-ohp","n":"Dumbbell Shoulder Press","g":"Shoulders"},{"id":"machine-ohp","n":"Machine Shoulder Press","g":"Shoulders"},{"id":"lateral","n":"Lateral Raise","g":"Shoulders"},{"id":"curl","n":"Barbell Curl","g":"Arms"},{"id":"hammer","n":"Hammer Curl","g":"Arms"},{"id":"cable-curl","n":"Cable Curl","g":"Arms"},{"id":"preacher","n":"Preacher Curl","g":"Arms"},{"id":"pushdown","n":"Triceps Pushdown","g":"Arms"},{"id":"skull","n":"Skullcrusher","g":"Arms"},{"id":"db-ext","n":"Overhead Triceps Extension","g":"Arms"},{"id":"squat","n":"Back Squat","g":"Legs"},{"id":"hack","n":"Hack Squat","g":"Legs"},{"id":"deadlift","n":"Conventional Deadlift","g":"Legs"},{"id":"rdl","n":"Romanian Deadlift","g":"Legs"},{"id":"hipthrust","n":"Hip Thrust","g":"Legs"},{"id":"legpress","n":"Leg Press","g":"Legs"},{"id":"bulgarian","n":"Bulgarian Split Squat","g":"Legs"},{"id":"lunge","n":"Walking Lunge","g":"Legs"},{"id":"legcurl","n":"Lying Leg Curl","g":"Legs"},{"id":"legext","n":"Leg Extension","g":"Legs"},{"id":"calf","n":"Standing Calf Raise","g":"Legs"},{"id":"plank","n":"Plank","g":"Core"},{"id":"hlr","n":"Hanging Leg Raise","g":"Core"},{"id":"crunch","n":"Cable Crunch","g":"Core"},{"id":"dip","n":"Dip","g":"Chest"},{"id":"chinup","n":"Chin-Up","g":"Back"},{"id":"pike-pushup","n":"Pike Push-Up","g":"Shoulders"},{"id":"aus-row","n":"Inverted Row","g":"Back"},{"id":"air-squat","n":"Bodyweight Squat","g":"Legs"},{"id":"bw-split","n":"Bodyweight Split Squat","g":"Legs"},{"id":"bridge","n":"Glute Bridge","g":"Legs"},{"id":"situp","n":"Sit-Up","g":"Core"},{"id":"bw-calf","n":"Single-Leg Calf Raise","g":"Legs"}];
+/* ---- compile BOTH sets with the engine, keep two ANIMS maps ---- */
+const V41_ANIMS={}; Object.keys(ANIMS).forEach(function(k){V41_ANIMS[k]=ANIMS[k];});
+Object.keys(DEMOS).forEach(function(k){delete DEMOS[k];});
+Object.assign(DEMOS,V5_DEMOS);
+buildAnims();
+const V5_ANIMS={}; Object.keys(ANIMS).forEach(function(k){V5_ANIMS[k]=ANIMS[k];});
+/* ---- build the grid ---- */
+const CATS=[]; EXS.forEach(function(e){ if(CATS.indexOf(e.g)<0)CATS.push(e.g); });
+let html="";
+CATS.forEach(function(cat){
+  html+='<h2>'+cat.toUpperCase()+'</h2>';
+  EXS.filter(function(e){return e.g===cat}).forEach(function(e){
+    const a=V41_DEMOS[e.id], b=V5_DEMOS[e.id]; if(!a||!b)return;
+    html+='<div class="excard"><div class="exhead"><span class="exname">'+e.n+'</span>'
+      +'<span class="excat">'+cat.toUpperCase()+'</span></div>'
+      +'<div class="pair">'
+      +'<div class="cellwrap"><div class="celltag a">SHIPPED SET \u00b7 EARLIER SESSION</div><svg viewBox="0 0 200 200"><g id="A_'+e.id+'"></g></svg>'
+      +'<div class="cellmeta">'+a.ph[0]+' \u2192 '+a.ph[1]+' \u00b7 '+a.scene+' / '+a.view+'</div></div>'
+      +'<div class="cellwrap"><div class="celltag b">GLM-5.3 FLASH \u00b7 AUTHORED 16:59</div><svg viewBox="0 0 200 200"><g id="B_'+e.id+'"></g></svg>'
+      +'<div class="cellmeta">'+b.ph[0]+' \u2192 '+b.ph[1]+' \u00b7 '+b.scene+' / '+b.view+'</div></div>'
+      +'</div>'
+      +'<div class="setup"><b>NEW SET-UP CUE</b>'+b.setup+'</div></div>';
+  });
+});
+document.getElementById('grid').innerHTML=html;
+/* ---- one loop, both sets, same t ---- */
+let frozen=-1, playing=true, last=performance.now(), acc=0;
+const CELLS=[]; EXS.forEach(function(e){
+  if(V41_ANIMS[e.id]&&V5_ANIMS[e.id]) CELLS.push({id:e.id,
+    ga:document.getElementById('A_'+e.id), gb:document.getElementById('B_'+e.id)});
+});
+function draw(tms){
+  const t=(tms%3140)/3140;
+  document.getElementById('ms').textContent=Math.floor(tms%3140)+'ms / 3140ms';
+  document.getElementById('scrub').value=Math.floor(tms%3140);
+  CELLS.forEach(function(c){
+    try{ const Pa=V41_ANIMS[c.id].gen(t), da=V41_DEMOS[c.id];
+      c.ga.innerHTML=drawFigure(da,Pa,loadFor(da,Pa)); }catch(err){}
+    try{ const Pb=V5_ANIMS[c.id].gen(t), db=V5_DEMOS[c.id];
+      c.gb.innerHTML=drawFigure(db,Pb,loadFor(db,Pb)); }catch(err){}
+  });
+}
+function loop(now){ if(playing){ acc+=now-last; } last=now; draw(acc); requestAnimationFrame(loop); }
+requestAnimationFrame(loop);
+document.getElementById('pp').addEventListener('click',function(){
+  playing=!playing; this.textContent=playing?'PAUSE':'PLAY'; });
+document.getElementById('scrub').addEventListener('input',function(){
+  playing=false; document.getElementById('pp').textContent='PLAY';
+  acc=+this.value; draw(acc); });
+window.addEventListener('keydown',function(ev){
+  if(ev.code==='Space'){ev.preventDefault();document.getElementById('pp').click();} });
+draw(0);
+
+</script></body></html>

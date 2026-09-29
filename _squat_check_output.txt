@@ -1,0 +1,94 @@
+﻿=== 1. load ==============================================================
+  ok    require('./_s3d_clip_squat.js') succeeds   [ok]
+  ok    S3D.CLIPS['squat'] is registered   [squat, 3.14 s, 5 keys]
+  ok    S3D.MEASURED['squat'] records the provenance   [Wikimedia Commons file commons_squat.webm / CC BY 3.0]
+  ok    the source string names the reference file it was measured from   [Wikimedia Commons file commons_squat.webm]
+  ok    the licence is the real one (CC BY 3.0)   [CC BY 3.0]
+
+=== 2. key times =========================================================
+  ok    exactly 5 keys   [0, 1.5, 1.82, 2.82, 3.14]
+  ok    a key sits at t = 0 s within 1e-9   [nearest 0 (delta 0.0e+0)]
+  ok    a key sits at t = 1.5 s within 1e-9   [nearest 1.5 (delta 0.0e+0)]
+  ok    a key sits at t = 1.82 s within 1e-9   [nearest 1.82 (delta 0.0e+0)]
+  ok    a key sits at t = 2.82 s within 1e-9   [nearest 2.82 (delta 0.0e+0)]
+  ok    a key sits at t = 3.14 s within 1e-9   [nearest 3.14 (delta 0.0e+0)]
+  ok    duration is exactly 3.14 s so the app HUD names the right phase   [3.14]
+
+=== 3. measured extremes (tolerance +/- 2 deg) ================
+  ok    knee interior angle at t=0 (home, standing): measured 176.80 deg vs target 176.8 -> delta +0.00   [within +/-2]
+  ok    knee interior angle at t=1.5 (away, bottom): measured 66.70 deg vs target 66.7 -> delta -0.00   [within +/-2]
+  ok    hip  interior angle at t=0 (home, standing): measured 172.70 deg vs target 172.7 -> delta +0.00   [within +/-2]
+  ok    hip  interior angle at t=1.5 (away, bottom): measured 70.40 deg vs target 70.4 -> delta +0.00   [within +/-2]
+  ok    phase 2 is a true hold (t=1.5 and t=1.82 are the same pose)
+  ok    phase 4 is a true hold (t=0, 2.82 and 3.14 are the same pose)
+  ok    phase 1 runs home -> away, so the knee FLEXES (the eccentric), not extends   [176.8 -> 66.7]
+
+=== 3b. the rest of the measured record =================================
+  thigh elevation from UP — measured 171.84 deg standing (reference 173.7, delta -1.86), 91.70 at the bottom (reference 91.7, delta -0.00)
+  ok    both recorded thigh angles are reproduced within +/-2 deg — and neither was typed in
+  hip-ankle reach implied by knee 66.7 alone            : 34.5845 units
+  hip-ankle reach implied by knee 66.7 AND thigh 91.7   : 34.5845 units
+  agreement                                             : 0.0000 units (0.00000 m)
+  ok    the reference's two recorded ANGLES are mutually consistent, so they can pick the pelvis position
+  the two angles put the hip 28.4 units above the ankle, i.e. a descent of 33.8 units = 0.495 m
+  the recorded hip_travel_m implies            : 38.7 units = 0.567 m
+  ok    the recorded DISTANCE is inconsistent with both recorded angles (it buries the hip deeper than the angles permit), which is why it is not used to build the pose   [38.7 vs 33.8 units]
+  hip in the reference's own convention (spine axis vs thigh direction): 171.84 standing (measured 172.7), 69.37 at the bottom (measured 70.4)
+  ok    the pose satisfies the reference's OWN hip convention too, so the two definitions do not conflict here   [worst delta 1.03]
+  (the nearby but different "pelvis centre -> knee" angle would read 161.02/69.83; it is NOT what the reference computed, because it mixes the pelvis's own width into a hip angle)
+  actual lean of the spine axis off vertical: 0.00 standing, 22.33 at the bottom (a plausible deep-squat trunk angle)
+  with the rig's REST foot targets instead, the standing pose gives knee 163.87 (measured 176.8, MISS -12.93 deg) and hip 164.22 (measured 172.7, miss -8.48 deg)
+  ok    the rig's REST foot position CANNOT reach the measured knee angle — this is why the stance is solved, not a stylistic choice
+  at that stance the hip-to-ankle distance is 62.20 of a maximum reach of 62.82 units = 99.0% extended — a 176.8 deg knee IS a straight leg
+
+=== feet planted, and the bar invariants =================================
+  ok    the ankle targets never move: the feet are PLANTED (worst drift 3.4e-14 units)
+  ok    the toes are held level and never slide (worst drift 3.8e-14)
+  bar invariant 1 — LEVEL and SQUARE:
+      worst |wrL.y - wrR.y| = 0.000e+0 units
+      worst |wrL.z - wrR.z| = 0.000e+0 units
+      worst |wrL.x + wrR.x| = 0.000e+0 units
+  bar invariant 2 — the grip cannot stretch:
+      |wrL - wrR| over 81 frames: min 15.200000, max 15.200000, delta 5.329e-14 units
+      (0.00:15.2000  0.39:15.2000  0.79:15.2000  1.18:15.2000  1.57:15.2000  1.96:15.2000  2.35:15.2000  2.75:15.2000  3.14:15.2000)
+  ok    the bar is level and square at every frame
+  ok    the grip is mirror-symmetric (wrL.x = -wrR.x)
+  ok    the grip width is CONSTANT — delta 5.329e-14 units, i.e. the bar is rigid
+  ok    no frame out of 201 needs the reach clamp (the legs are never over-extended)   [none]
+  AUTHORED arm pose at t=0 (not measured — nothing in the reference constrains it):
+      shoulder 4.50, 103.88, 0.00   elbow 13.02, 83.23, -8.77   wrist 7.60, 101.88, -10.50
+      elbow interior angle 27.2 deg; wrist is 3.10, -2.00, -10.50 from the shoulder (x,y,z)
+      grip width 15.20 units = 0.223 m
+
+=== 4. smooth motion =====================================================
+  ok    no non-finite angle across 61 frames
+  ok    no frame-to-frame knee jump above 15 deg (worst 10.13 deg at t=2.774)
+  ok    phase 1 is monotonic (knee only flexes; worst reversal 0.0000 deg at t=0.00)
+  ok    phase 3 is monotonic (knee only extends; worst reversal 0.0000 deg at t=0.00)
+  knee arc (deg) at t = 0.00:176.8  0.31:139.3  0.63:106.1  0.94:82.1  1.26:69.5  1.57:66.7  1.88:67.1  2.20:82.7  2.51:122.6  2.83:176.8  3.14:176.8
+  hip  arc (deg) at t = 0.0:172.7  0.3:155.0  0.6:127.6  0.9:99.5  1.3:77.1  1.6:70.4  1.9:71.5  2.2:100.2  2.5:142.5  2.8:172.7  3.1:172.7
+
+=== 5. NEGATIVE CONTROL ==================================================
+  baseline  knee 176.80/66.70  hip 172.70/70.40  grip delta 4.44e-14  level 0.00e+0
+  ok    NC1 (home/away exchanged) FAILS the direction check   [knee now 66.7 -> 176.8]
+  ok    NC1 FAILS the home-vs-target check   [home knee 66.7 vs 176.8]
+  ok    NC2 (one arm tilted 25 deg) FAILS the bar-level check   [worst |wrL.y - wrR.y| 0.79 units vs a 0.5 threshold]
+  ok    NC3 (a leg target moved 2 units between keys) FAILS the planted-feet check   [worst ankle drift 2.00 units vs the 1e-9 the real clip holds]
+  ok    NC4 (a key moved by 1e-7 s) FAILS the key-time check   [delta 1.0e-7]
+  NC5 stance widened 3 units -> home knee 177.97, home hip 175.45
+  ok    NC5 (stance widened by 3 units) FAILS the standing hip check — the solve is load-bearing, not decoration   [home hip 175.45 vs 172.7]
+  NC6 torso lean +8 deg -> bottom knee 66.70, bottom hip 66.66
+  ok    NC6 (torso lean perturbed 8 deg) FAILS the bottom hip check   [bottom hip 66.66 vs 70.4]
+  ok    the controls left the real clip untouched
+
+=== 6. render ============================================================
+  wrote _squat_filmstrip.png   2220x484
+  wrote _squat_side.png   2220x445
+  wrote _squat_extremes.png   2220x735
+  wrote _squat_top.png   2220x635
+  wrote _squat_front.png   2220x675
+  wrote _squat_rear.png   2220x675
+  page errors: none
+
+=== result ===============================================================
+42 assertions, 0 failed  ->  PASS

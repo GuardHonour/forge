@@ -1,0 +1,20 @@
+=== push_up ===
+Prompt: Push-up exercise: athlete in dark neon gym doing proper form, cyan glow on body, step 1-3 sequence, dark background with purple gradient, professional fitness illustration
+Model: google/gemini-3.1-flash-image
+---
+=== squat ===
+Prompt: Squat exercise: athlete demonstrating deep squat form, dark neon gym, cyan and purple lighting, step-by-step technique arrows, professional fitness instruction graphic
+Model: google/gemini-3.1-flash-image
+---
+=== plank ===
+Prompt: Plank hold exercise: athlete in perfect plank position, dark neon background with cyan outline glow, 3-step form guide, professional fitness illustration style
+Model: google/gemini-3.1-flash-image
+---
+=== lunge ===
+Prompt: Lunges exercise: athlete in split-stance lunge, proper knee alignment, cyan/purple neon lighting, dark background, step sequence, professional fitness graphic
+Model: google/gemini-3.1-flash-image
+---
+=== jumping_jack ===
+Prompt: Jumping jacks: athlete mid-jump arms raised, legs spread, neon cyan glow, dark purple gradient background, 3-step technique, professional fitness illustration
+Model: google/gemini-3.1-flash-image
+---

@@ -1,0 +1,17 @@
+# Local Blender application install (the program itself) — NOT part of the app
+_blender/
+
+# Working / reference scratch caches — not part of the deployed PWA
+_poselab/
+_ref/
+_shot3d_tmp/
+_live_shot/
+_gifwork/
+_iosfix/
+_gatedeploy/
+_deploy/
+
+# OS / editor noise
+Thumbs.db
+.DS_Store
+*.swp
