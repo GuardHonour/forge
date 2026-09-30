@@ -32,7 +32,13 @@ const SRC = process.argv[2] || '_deploy';
 const SERVE = '_swserve';
 const PROFILE = '_swserve_profile';
 const OLD_BUILD = '2026-08-25r';
-const NEW_BUILD = '2026-08-25s';
+/* The expected NEW build is read from the staged sw.js, not hardcoded: this probe runs against
+   whatever build is being shipped next, and a hardcoded expectation failed every run the moment
+   the deployed build moved past 2026-08-25s (4 cascade-failures on a build that was behaving
+   exactly right). The OLD_BUILD above is the premise (a real phone's stale state), not an
+   expectation — it stays. */
+const NEW_BUILD = (fs.readFileSync(SRC + '/sw.js', 'utf8').match(/const BUILD = '([^']+)'/) || [])[1];
+if (!NEW_BUILD) { console.log('FAIL: could not read the BUILD constant from ' + SRC + '/sw.js'); process.exit(1); }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let bad = 0;
@@ -132,7 +138,7 @@ let chrome;
       return {href: location.href, search: location.search,
         marker: localStorage.getItem('forge_build'),
         tabs: document.querySelectorAll('.navb').length,
-        build: (document.body.innerHTML.match(/2026-08-25[a-z]/)||['-'])[0],
+        build: (document.body.innerHTML.match(new RegExp("${NEW_BUILD.replace(/[-]/g, '\\-')}[a-z]?")) || ['-'])[0],
         errs: (window.__err||[]).length};
     })()`);
     ok(/[?&]fresh=1/.test(after.search), 'an older marker redirects to ?fresh=1 (now at "' + after.search + '")');

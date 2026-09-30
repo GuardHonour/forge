@@ -9,6 +9,31 @@
    The 43.9 is the reference's wrist at 0.401 m over an upper arm of 0.219 m, expressed in this
    engine's units by scaling the upper arm to the rig's 24:  24 * (0.401 / 0.219) = 43.9.
 
+   ---------------------------------------------------------------------------------------------
+   BAKED, NOT SOLVED AT LOAD (read this before touching the two solver functions)
+   ---------------------------------------------------------------------------------------------
+   The lockout and rack poses below are the OUTPUT of the two solvers further down, captured at
+   full precision and written in as literals. The solvers themselves are kept, verbatim in their
+   logic, behind `solve()` — which NOTHING calls at load. This is deliberate and it is a boot-time
+   fix, not a convenience:
+
+     The rack solver alone walks a 12 x 13 x 4 x 5 x 4 grid (12,480 candidates), and every candidate
+     that passes the band filter runs `arcDip`, which poses a 5-key probe clip and samples 241 points
+     of phase 1 through it — a full FK + two-arm IK + two-leg IK evaluation per point. 8,343 of the
+     12,480 candidates passed, so one app load posed and evaluated roughly 2,015,000 frames before it
+     could paint. This module is inlined into the app's single inline-script block (see
+     _build_app3d.cjs), so that cost sat INSIDE the blocking script: the phone sat on its PWA splash
+     for tens of seconds on every single open — measured at ~25-50 s of pure CPU on a desktop
+     mid-range laptop-class core, and worse on a phone. `node _diag_bisect.cjs` (throwaway) showed
+     the app script at 49.8 s in node with this module solving at load and 0.01 s without it.
+
+     The solver is deterministic pure math over a fixed rig, so its output is a constant of the
+     build. Baking it moves the cost to build time; `solve()` keeps it reproducible, and
+     `node _check_clip_press.cjs --resolve` re-runs it and asserts the baked literals still
+     reproduce (a changed rig or authored constant now FAILS there instead of silently skewing the
+     clip). Do not re-assert the old behaviour by calling solve() at module load — that is the
+     regression this section exists to prevent.
+
    AUTHORED — nothing in the reference constrains any of this, it is staging:
      - the WHOLE racked (bottom) position. The reference pinned the lockout, not a reliable bottom,
        so the bar's bottom height, the elbow angle there, the grip width, the stance and the leg
@@ -200,12 +225,15 @@
      shoulders rather than tucked against the chest — it is forced by this rig's arm length, not
      chosen for looks. Solved by search over the wrist target and the pole: 74.9 deg with the forearm
      0.64 deg off vertical and the elbow 0.2 units forward of the hand. */
-  /* Seeds only — the rack solver below overwrites BOTH of these. They exist so the solver has a
-     definition even if it ever fails to find a pose (it throws if it does not). */
-  var WRIST_RACK = [GRIP_X, SH_REST[1] + 8.5, 19.0];
-  var POLE_RACK = [11, 109, 13];
-  var RACK_SOLVED = null;                    /* filled by the solver below */
-  var RACK_CONSIDERED = 0, RACK_ACCEPTED = 0;
+  /* BAKED — the rack solver's own output, captured at full precision (see BAKED, NOT SOLVED AT
+     LOAD above). NOT seeds: these are the delivered pose. Re-derivable with `solve()`, and
+     re-verified against it by `node _check_clip_press.cjs --resolve`. */
+  var WRIST_RACK = [GRIP_X, 120.5, 21];
+  var POLE_RACK = [16, 60, 25];
+  var RACK_SOLVED = { elbow: 78.28449490054308, tilt: 3.4336517152055506, elbFwd: 1.0411936202611507,
+                      elbBelow: 3.457866588276133, dip: 0.004596435943838628,
+                      back: 0.0005510728087472216 };
+  var RACK_CONSIDERED = 12480, RACK_ACCEPTED = 8343;
 
   /* LOCKOUT (MEASURED elbow). The wrist is placed on the 163.7 deg chord (CHORD_LOCKOUT) straight
      ABOVE THE POSED SHOULDER JOINT — not above its rest position. That distinction is the whole
@@ -215,8 +243,11 @@
      the posed shoulder the arm finishes genuinely vertical, which is both the highest the measured
      elbow angle permits and what an overhead press's lockout actually looks like. */
   var POLE_LOCKOUT = [25, SH_REST[1] - 1, 6];
-  var LOCKOUT_Z = 0.0;                       /* solved below, not authored */
-  var WRIST_LOCKOUT = [GRIP_X, SH_REST[1] + CHORD_LOCKOUT, 0.0];
+  /* BAKED — solveLockout's output: the wrist fired straight up from the POSED shoulder, at the
+     height whose elbow angle is exactly 163.7 deg (bisected, then the best of 19 z-offsets).
+     LOCKOUT_Z and the height are the solver's, full precision; see BAKED, NOT SOLVED AT LOAD. */
+  var LOCKOUT_Z = -2.5;
+  var WRIST_LOCKOUT = [GRIP_X, 146.3516184743521, -2.5];
 
   /* ---------------------------------------------------------------- the legs, solved by IK
      Ankles planted at the rig's own rest ankle height so the soles stay on the floor; the knee angle
@@ -263,8 +294,11 @@
      shoulder away from the target's z. That is worth 0.067 of the 0.914 unit shortfall.
      The probe clip is registered under its own name and removed again, so it can never be drawn.
      Nothing is rounded: ikTwoBone puts the wrist on the chord exactly, and rounding the target to
-     4 dp was worth 8e-4 units of chord and a tenth of a degree of elbow. */
-  (function solveLockout() {
+     4 dp was worth 8e-4 units of chord and a tenth of a degree of elbow.
+
+     PURE FUNCTION since the bake: returns its result, touches no module state. Called only by
+     solve() below — never at load; the baked WRIST_LOCKOUT above is its output. */
+  function solveLockout() {
     var NAME_PROBE = 'press__shoulder_probe';
     function pose(target) {
       var kL = key(0, target, POLE_LOCKOUT, TORSO_LOCKOUT);
@@ -278,7 +312,7 @@
         dy: p.wrL[1] - p.shL[1]
       };
     }
-    var bestY = 0, bestH = -Infinity;
+    var bestY = 0, bestZ = -3, bestH = -Infinity;
     for (var z = -3; z <= 1.5001; z += 0.25) {
       var lo = SH_REST[1] + 35, hi = SH_REST[1] + CHORD_LOCKOUT;   /* elbow(lo) < target < elbow(hi) */
       for (var i = 0; i < 40 && hi - lo > 1e-9; i++) {
@@ -286,10 +320,10 @@
         if (pose([GRIP_X, mid, z]).elbow < TARGETS.elbow_lockout_deg) lo = mid; else hi = mid;
       }
       var y = (lo + hi) / 2, got = pose([GRIP_X, y, z]);
-      if (got.dy > bestH) { bestH = got.dy; bestY = y; LOCKOUT_Z = z; }
+      if (got.dy > bestH) { bestH = got.dy; bestY = y; bestZ = z; }
     }
-    WRIST_LOCKOUT = [GRIP_X, bestY, LOCKOUT_Z];
-  })();
+    return { wrist: [GRIP_X, bestY, bestZ], dy: bestH };
+  }
 
   /* ---------------------------------------------------------------- solve the rack target
      WRIST_RACK and POLE_RACK above are starting estimates; the delivered rack pose is CHOSEN by the
@@ -312,8 +346,14 @@
      the bar finishing well forward of the shoulders is FORCED by this rig's arm length, not chosen
      for looks; given that distance, the pole then decides how vertical the forearm can be.
      The search scores each candidate on the whole phase-1 arc, not just on the end pose, so the
-     winner is the pose whose elbow reaches its global minimum at the rack key. */
-  (function solveRack() {
+     winner is the pose whose elbow reaches its global minimum at the rack key.
+
+     PURE FUNCTION since the bake: takes the SOLVED lockout wrist (the arc is measured from it —
+     the original load order ran solveLockout first, then solveRack read the updated module var, so
+     solve() reproduces exactly that), returns its result, touches no module state. Called only by
+     solve() below — never at load; the baked WRIST_RACK / POLE_RACK / RACK_SOLVED above are its
+     output. */
+  function solveRack(lockout) {
     var NAME_PROBE = 'press__rack_probe';
     /* NOTE the two probe keys carry distinct TIMES. A degenerate two-key clip whose keys share one
        `t` makes evalClip's key span zero, and everything downstream (root, fk positions, every angle)
@@ -344,11 +384,11 @@
        so that what is measured is the interpolated motion, not just the endpoint */
     function arcDip(w, pole) {
       var k = key(0, w, pole, TORSO_RACK);
-      var k0 = key(0, WRIST_LOCKOUT, POLE_LOCKOUT, TORSO_LOCKOUT);
+      var k0 = key(0, lockout, POLE_LOCKOUT, TORSO_LOCKOUT);
       var k1 = key(1.50, w, pole, TORSO_RACK);
       var kA = key(1.82, w, pole, TORSO_RACK);
-      var k2 = key(2.82, WRIST_LOCKOUT, POLE_LOCKOUT, TORSO_LOCKOUT);
-      var k3 = key(DURATION, WRIST_LOCKOUT, POLE_LOCKOUT, TORSO_LOCKOUT);
+      var k2 = key(2.82, lockout, POLE_LOCKOUT, TORSO_LOCKOUT);
+      var k3 = key(DURATION, lockout, POLE_LOCKOUT, TORSO_LOCKOUT);
       S3D.CLIPS[NAME_PROBE] = { name: NAME_PROBE, duration: DURATION, loop: true, desc: 'probe pose',
         keys: [k0, k1, kA, k2, k3] };
       var lo = Infinity, end = 0, prev = null, back = 0;
@@ -389,13 +429,25 @@
       }
     }
     if (!best) { throw new Error('rack solver found no pose in the 62-88 deg band with the elbow below the shoulder'); }
-    RACK_CONSIDERED = considered;
-    RACK_ACCEPTED = accepted;
-    WRIST_RACK = [GRIP_X, best.wy, best.wz];
-    POLE_RACK = best.pole;
-    RACK_SOLVED = { elbow: best.r.elbow, tilt: best.r.tilt, elbFwd: best.r.elbFwd,
-                    elbBelow: best.r.elbBelow, dip: best.a.dip, back: best.a.back };
-  })();
+    return { wrist_rack: [GRIP_X, best.wy, best.wz], pole_rack: best.pole,
+             rack_solved: { elbow: best.r.elbow, tilt: best.r.tilt, elbFwd: best.r.elbFwd,
+                            elbBelow: best.r.elbBelow, dip: best.a.dip, back: best.a.back },
+             rack_considered: considered, rack_accepted: accepted };
+  }
+
+  /* ---------------------------------------------------------------- solve() — on demand only
+     Runs both solvers in the original load order (lockout, then rack against the solved lockout)
+     and returns what the baked constants above were captured from. NOTHING calls this at module
+     load — that was the boot-time regression the bake removes. `node _check_clip_press.cjs
+     --resolve` runs it and asserts the baked constants still reproduce, so a rig change or an
+     edited authored constant fails the check instead of silently skewing the clip. */
+  function solvePress() {
+    var L = solveLockout();
+    var R = solveRack(L.wrist);
+    return { wrist_lockout: L.wrist, wrist_rack: R.wrist_rack, pole_rack: R.pole_rack,
+             rack_solved: R.rack_solved, rack_considered: R.rack_considered,
+             rack_accepted: R.rack_accepted, lockout_dy: L.dy };
+  }
 
   /* ---------------------------------------------------------------- the clip */
   var CLIP = {
@@ -423,6 +475,9 @@
      compares against are the clip's own, rather than a second copy typed into the test. */
   return {
     clip: CLIP, targets: TARGETS,
+    /* `solve` re-runs both solvers on demand and is what `--resolve` verifies the bake against.
+       NOTHING calls it at module load — see BAKED, NOT SOLVED AT LOAD in the header. */
+    solve: solvePress,
     derived: {
       L_upper: L_UPPER, L_fore: L_FORE,
       chord_at_lockout_elbow: CHORD_LOCKOUT,

@@ -15,7 +15,13 @@
      A. level and square — |wrL.y - wrR.y|, |wrL.z - wrR.z| and wrL.x + wrR.x all ~ 0
      B. constant grip — |wrL - wrR| identical at every key time and every frame (min / max / delta)
 
-   Usage:  node _check_clip_press.cjs [--shot] */
+   `--resolve` is the bake's drift-guard: the clip's poses are BAKED (the solvers no longer run at
+   module load — they cost ~30 s of CPU per boot when inlined; see BAKED, NOT SOLVED AT LOAD in the
+   module header). This mode re-runs `mod.solve()` on demand and asserts the baked literals still
+   reproduce, so a rig change or an edited authored constant fails here instead of silently skewing
+   the clip.
+
+   Usage:  node _check_clip_press.cjs [--shot] [--resolve] */
 'use strict';
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -40,6 +46,39 @@ function ok(cond, label, detail) {
   if (!cond) fails++;
   console.log((cond ? '  PASS  ' : '  FAIL  ') + label + (detail === undefined ? '' : '   ' + detail));
   return cond;
+}
+
+/* ------------------------------------------------------------------ --resolve: the bake's drift-guard
+   Re-runs both solvers and asserts the baked literals still reproduce. The solver is deterministic
+   pure math over a fixed rig, so the numbers should match to float noise (1e-6); the candidate
+   counts must match exactly. Run AFTER any change to _s3d_core.js, to BONE, or to this module's
+   authored constants — and re-bake when it fails. */
+if (process.argv.includes('--resolve')) {
+  console.log('\n=== 0. --resolve: the baked constants reproduce from the solvers ==========');
+  const t0 = Date.now();
+  const s = mod.solve();
+  const dt = ((Date.now() - t0) / 1000).toFixed(1);
+  const near = (a, b, tol) => Math.abs(a - b) <= tol;
+  const cmpNum = (label, baked, got) => ok(near(baked, got, 1e-6),
+    label, 'baked ' + baked + '   solved ' + got + '   delta ' + (got - baked).toExponential(2));
+  const cmpVec = (label, baked, got) => ok(baked.length === got.length &&
+      baked.every((v, i) => near(v, got[i], 1e-6)),
+    label, 'baked [' + baked.join(', ') + ']   solved [' + got.join(', ') + ']');
+  cmpVec('wrist_lockout', mod.derived.wrist_lockout, s.wrist_lockout);
+  cmpVec('wrist_rack', mod.derived.wrist_rack, s.wrist_rack);
+  cmpVec('pole_rack', mod.derived.pole_rack, s.pole_rack);
+  ok(s.rack_considered === mod.derived.rack_considered, 'rack_considered exact',
+    'baked ' + mod.derived.rack_considered + '   solved ' + s.rack_considered);
+  ok(s.rack_accepted === mod.derived.rack_accepted, 'rack_accepted exact',
+    'baked ' + mod.derived.rack_accepted + '   solved ' + s.rack_accepted);
+  Object.keys(mod.derived.rack_solved).forEach(k =>
+    cmpNum('rack_solved.' + k, mod.derived.rack_solved[k], s.rack_solved[k]));
+  ok(s.lockout_dy !== undefined && isFinite(s.lockout_dy), 'solver returned a finite lockout height', s.lockout_dy);
+  console.log('  (solve took ' + dt + ' s — this is the boot cost the bake removed)');
+  console.log('\n=== --resolve result ======================================================');
+  console.log(checks + ' assertions, ' + fails + ' failed  ->  ' + (fails ? 'FAIL' : 'PASS'));
+  process.exitCode = fails ? 1 : 0;
+  return;
 }
 
 /* ------------------------------------------------------------------ measuring helpers

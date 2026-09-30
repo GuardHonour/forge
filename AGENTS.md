@@ -218,8 +218,12 @@ EMPTY log, not the user's own.
   (manifest, icons, `install.html`, `latest.html` are static), and the app's own `sw.js` registration
   is relative, so the repo-root layout is what Pages serves. Both build markers must be bumped together
   (`APP_BUILD` and `sw.js`'s `BUILD`) — `_coach_test.cjs` fails if they drift.
-- **How the update reaches an installed copy:** the bump flips `localStorage['forge_build']`, the
-  service worker's changed tag replaces the cached shell, and the document is fetched network-first.
+- **How the update reaches an installed copy:** the document is served STALE-WHILE-REVALIDATE
+  (cached copy renders instantly; a background refresh stocks the cache for the NEXT open), with
+  one carve-out: navigations carrying `?fresh=` are NETWORK-FIRST, because the self-heal depends on
+  that hop being fresh bytes. So the bump flips `localStorage['forge_build']`, the stale install
+  notices on the open it lands on, wipes the SW + caches and reloads with `?fresh=1` — fresh bytes,
+  no loop. In the worst case an update costs one extra open; no user action beyond reopening.
   No user action beyond reopening the app.
 - **A `git push` from this workspace does NOT work unattended.** `credential.helper=helper-selector`
   (from the hermes gitconfig) blocks waiting for an interactive selection, and with the helper
@@ -246,7 +250,8 @@ EMPTY log, not the user's own.
 
 ## FILES
 - `index.html` — THE app (edit this for features/fixes).
-- `sw.js` — service worker: network-first for the document, cache-first for the shell, cross-origin never intercepted. Registered inline from `index.html` (no `<script src>`) and skipped on `file://`.
+- `sw.js` — service worker: the document is STALE-WHILE-REVALIDATE (cached copy renders instantly, background refresh for the next open; navigations carrying `?fresh=` are network-first because the self-heal depends on that hop being fresh bytes), cache-first for every other same-origin request, cross-origin never intercepted. Registered inline from `index.html` (no `<script src>`) and skipped on `file://`.
+- `_probe_boot_cost.cjs` — boots the app's single inline script in the runtime-test's node sandbox and asserts it is fast (< 1 s). It exists because the FORGE-3D press clip once ran its pose solvers at module load — ~2 million FK+IK pose evaluations inside the parser-blocking script, tens of seconds on the splash on every phone open — and no suite measured boot cost, so the gate was green while the phone was unusable. The press clip's solvers are now BAKED (see `BAKED, NOT SOLVED AT LOAD` in `_s3d_clip_press.js`; `node _check_clip_press.cjs --resolve` re-runs them and asserts the baked constants reproduce).
 - `manifest.json` — PWA name/icons/display (name "FORGE · Training Log", icons icon-192/512).
 - `install.html` / `latest.html` — install + update pages.
 - `icon-*.png` / `favicon-96.png` — icons.
