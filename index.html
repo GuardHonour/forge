@@ -148,6 +148,7 @@ main{flex:1;padding:18px 16px 178px}
 .xsub{font-size:12px;color:var(--dim);margin-top:2px;font-weight:500}
 .xchev{margin-left:auto;color:var(--dim);flex:0 0 auto}
 .prbanner{margin-top:11px;background:color-mix(in srgb,var(--volt) 12%,transparent);border:1px solid color-mix(in srgb,var(--volt) 35%,transparent);color:var(--volt);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:700;letter-spacing:.04em;animation:pop .3s ease}
+.prtag{display:inline-block;margin-left:7px;padding:1px 6px;border:1px solid var(--gold);color:var(--gold);border-radius:5px;font-size:9px;font-weight:800;letter-spacing:.6px;vertical-align:1px}
 @keyframes pop{0%{transform:scale(.96);opacity:0}100%{transform:scale(1);opacity:1}}
 
 .setrow{display:grid;grid-template-columns:40px 34px 1fr 1fr 58px;gap:6px;align-items:center;margin-top:8px}
@@ -3328,16 +3329,25 @@ function vHist(){
     const wk=mondayOf(s.date);
     if(wk!==curWk){curWk=wk;const lbl=wk===cm?'THIS WEEK':wk===lm?'LAST WEEK':'WEEK '+isoWeek(s.date);out+='<div class="week-div"><span>'+lbl+'</span></div>'}
     const open=ui.histOpen===s.id;
+    /* the PR count is derived here, not read from the stored bare count, so the
+       number above the fold and the badges below it can never disagree */
+    const prs=sessPrs(s);
     out+='<div class="card histcard"><div class="hrow">'
       +'<div class="hdate"><div class="hd-dot">'+new Date(s.date+'T00:00:00').getDate()+'</div><div style="font-size:9.5px;color:var(--dim);font-weight:700;margin-top:3px">'+new Date(s.date+'T00:00:00').toLocaleDateString(undefined,{weekday:'short'}).toUpperCase()+'</div></div>'
       +'<div style="flex:1;min-width:0"><button class="linklike" style="all:unset;cursor:pointer" onclick="G.openHist(\''+s.id+'\')"><span class="hname">'+esc(s.name)+'</span></button>'
-      +'<div class="hmeta">'+dShort(s.date)+' · '+s.entries.reduce((a,e)=>a+volSets(e.sets).length,0)+' sets · '+hhmm(s.dur||0)+(s.prCount?' · <span style="color:var(--gold);font-weight:800">'+s.prCount+' PR</span>':'')+'</div></div>'
+      +'<div class="hmeta">'+dShort(s.date)+' · '+s.entries.reduce((a,e)=>a+volSets(e.sets).length,0)+' sets · '+hhmm(s.dur||0)+(prs.length?' · <span style="color:var(--gold);font-weight:800">'+prs.length+' PR</span>':'')+'</div></div>'
       +'<div class="hvol"><div class="hv">'+comp(sessVol(s))+'</div><div class="hu">'+wl()+' VOL</div></div></div>';
     if(open){
       out+='<div class="hdetail">';
       s.entries.forEach(en=>{
         const ex=EXBY[en.id];
-        out+='<table class="htable"><tr><th colspan="2" style="color:var(--ink);font-size:12px">'+ex.n+'</th><th style="text-align:right">RIR</th><th style="text-align:right">VOL</th></tr>';
+        /* a PR is the exercise's whole working-set volume beating its best previous
+           session — the badge sits on the exercise, and its tooltip names what was
+           beaten and by how much, the same claim the live Train card's banner makes */
+        const pr=prs.includes(en),pv=pr?prevSum(en.id,s.date):null;
+        out+='<table class="htable"><tr><th colspan="2" style="color:var(--ink);font-size:12px">'+ex.n
+          +(pr?'<span class="prtag" title="Volume PR · beat '+dShort(pv.sd)+' by +'+comp(entryVol(en,s.date)-pv.v)+' '+wl()+'">PR</span>':'')
+          +'</th><th style="text-align:right">RIR</th><th style="text-align:right">VOL</th></tr>';
         en.sets.forEach((st,k)=>{const kd=kindOf(st),rv=setRirOf(st,en),vg=countsVol(st);
           out+='<tr><td style="color:var(--dim)">'+(kd?kd.s+' ':'')+'Set '+(k+1)+'</td>'
             +'<td>'+loadLbl(ex,st.w)+' × '+st.r+'</td>'
@@ -3399,7 +3409,7 @@ function heatCard(){
   grid+=axis.join('');
   return '<div class="hsum">'
     +'<div class="hstat"><div class="hbig">'+(last?'Last session '+ago(last):'No sessions yet')+'</div>'
-      +'<div class="hsub">'+(last?esc(dFull(last))+(lastSess?' · '+esc(lastSess.name):'')+(lastSess&&lastSess.prCount?' · '+lastSess.prCount+' PR':''):'Log one and it lands here')+'</div></div>'
+      +'<div class="hsub">'+(last?esc(dFull(last))+(lastSess?' · '+esc(lastSess.name):'')+(lastSess&&sessPrs(lastSess).length?' · '+sessPrs(lastSess).length+' PR':''):'Log one and it lands here')+'</div></div>'
     +'<div class="hstat"><div class="hbig">'+last7+'</div><div class="hsub">in the last 7 days</div></div></div>'
     +'<div class="heat">'+grid+'</div>'
     +'<div class="hlegend"><span>no session</span><i class="hs0"></i><i style="opacity:.35"></i><i style="opacity:.65"></i><i></i><span>heaviest day</span></div>'
@@ -3717,15 +3727,25 @@ let __edit=null;
 /* Edits happen on a COPY. Nothing touches the log until Save, so Cancel is free
    and a refused save (every exercise removed) cannot leave an empty shell behind. */
 function curEditSession(){return __edit?__edit.work:null}
+/* Which entries of a SAVED session were PRs — derived from the same rule the count
+   is re-derived with (below): the entry's working volume beat the best this exercise
+   had in any session strictly before this one. Derived at render rather than trusted
+   from storage, because the saved record keeps only a bare count: every session
+   logged before this existed still shows which exercise earned it, and an edit that
+   moves a previous best cannot leave a stale flag behind. */
+function sessPrs(s){
+  return (s.entries||[]).filter(en=>{
+    const p=prevSum(en.id,s.date);
+    return !!(p&&p.v>0&&entryVol(en,s.date)>p.v);
+  });
+}
 /* Re-derives the claims a record makes about itself after an edit: the PR count,
    and the exercise-level effort summary — which is only a compatibility mirror of
    the per-set readings, so an edit that changes them must refresh it rather than
    leave the two disagreeing. */
 function recountSession(s){
-  let n=0;
+  const n=sessPrs(s).length;
   (s.entries||[]).forEach(en=>{
-    const prev=prevSum(en.id,s.date);
-    if(prev&&prev.v>0&&entryVol(en,s.date)>prev.v)n++;
     const r=entryRir(en);
     if(r!==null)en.rir=r;else delete en.rir;
   });
@@ -4663,7 +4683,7 @@ saveSess();
 /* Auto cache-bust: if a newer build is deployed, this install picks it up on
    the next open. APP_BUILD must be bumped whenever index.html ships, otherwise
    a cached home-screen copy keeps running the old code. */
-const APP_BUILD='2026-09-30b';
+const APP_BUILD='2026-09-30c';
 try{
   const seen=localStorage.getItem('forge_build');
   if(seen && seen!==APP_BUILD){

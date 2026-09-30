@@ -75,7 +75,7 @@ const NAMES = ['G','S','EXS','EXBY','MUSCLES','MUSBY','TAGMAP','exMuscles','tagT
   'sessionEditHTML','recountSession','modalOpen',
   'diagnose','vCoach','rxRows','avoided','confidence','adherence','acwr','balance','deloadCheck','rampCheck','readiness',
   'weekStreak','streakTarget','project','seed','todayISO','addDays','mondayOf','fw','wl','dw','snapW','gridOf','stepLoad','isBw','isBwEx','scoreByReps','loadLbl','wCell','compactW','repLoad','allLifts','recentPRs','scoreOf','sessionLoad','loadTrend','e1Baseline','slopeXY','progIndex','nextDayName','latest','entryVol','vTrain','KINDS','setKind','kindOf','isWarm','countsVol','countsE1','volSets','e1Sets','warmCount','ROUTINES','parseBackup','adoptBackup','backupState','backupLine','hasPreImport','sortHist','recountSession','curEditSession','openSessionEdit','bwSorted','bwLatest','bwSeries','bwAt','logBw','bwTrend','svgBw','bwSection','U','muscleSets','SBD_NORMS','SBD_LIFTS','SBD_DECILES','IPF_CLASSES','stdSex','stdClass','stdRatio','stdBand','standardsSection','G','adjustAfterSet',
-  'vProg','heatCard','svgBars','weeklyVol','dFull','ago','loc','sessVol'];
+  'vProg','heatCard','svgBars','weeklyVol','dFull','ago','loc','sessVol','sessPrs','prevSum'];
 const ret = ';return{' + NAMES.map(n => n + ':(typeof ' + n + '!=="undefined"?' + n + ':null)').join(',')
   + ',sessRef:()=>sess,saveLS:()=>saveLS(),loadLS:()=>loadLS(),freshState:()=>freshState(),VIEWS:()=>VIEWS'
   + ',__S:()=>S,__edit:()=>__edit,__setPreImport:v=>{__imp=v},__imp:()=>__imp};';
@@ -1412,6 +1412,58 @@ ok(/Delete session/.test(hist2), 'and Delete is still there, side by side');
 ok(/warm-up|W Set|Set 1/.test(hist2) || true, 'set rows label their kind');
 const trainHtml = views.train();
 ok(/bodyweight/i.test(trainHtml) || true, 'the train tab still renders');
+
+/* ---------- 28b. PR ATTRIBUTION · the count on a past session names the exercise ----------
+   The saved record kept only a bare prCount, so a session that said "2 PR" had no way to
+   say WHICH exercise earned it. The badge is derived at render from the same rule the
+   count is re-derived with — beat this exercise's best previous working volume — so old
+   records, records whose neighbours were later edited, and newly saved ones all read the
+   same truth. */
+sect('PR ATTRIBUTION · an expanded session shows WHICH exercise was the PR');
+const mkP = (id, date, name, entries, prCount) => ({ id, date, name, dur: 3000, entries, ...(prCount === undefined ? {} : { prCount }) });
+const tprA = mkP('tpra', '2026-09-01', 'Day A', [{ id: 'bench', sets: [{ w: 100, r: 8 }, { w: 100, r: 8 }, { w: 100, r: 8 }] }]);
+const tprB = mkP('tprb', '2026-09-05', 'Day B', [
+  { id: 'bench', sets: [{ w: 102.5, r: 8 }, { w: 102.5, r: 8 }, { w: 102.5, r: 8 }] },
+  { id: 'row', sets: [{ w: 70, r: 8 }, { w: 70, r: 8 }] }]);
+const tprC = mkP('tprc', '2026-09-08', 'Day C', [
+  { id: 'bench', sets: [{ w: 100, r: 8 }, { w: 100, r: 8 }, { w: 100, r: 8 }] },
+  { id: 'row', sets: [{ w: 70, r: 8 }, { w: 72.5, r: 8 }, { w: 72.5, r: 8 }] }]);
+/* an old record carries a stale bare count — the derived reading must win over it */
+const tprD = mkP('tprd', '2026-09-10', 'Day D', [
+  { id: 'bench', sets: [{ w: 105, r: 8 }, { w: 105, r: 8 }, { w: 105, r: 8 }] }], 0);
+live().hist = [tprA, tprB, tprC, tprD];
+api.sortHist();
+ok(api.sessPrs(tprA).length === 0, 'the session that set a baseline has no PR — nothing was beaten yet');
+ok(api.sessPrs(tprB).length === 1 && api.sessPrs(tprB)[0].id === 'bench',
+  'Day B attributes exactly one PR: bench (102.5×8×3 beat 100×8×3)');
+ok(api.sessPrs(tprC).length === 1 && api.sessPrs(tprC)[0].id === 'row',
+  'Day C attributes the PR to rows — the lift that BEAT its best, not bench which only matched it');
+ok(api.prevSum('row', '2026-09-08') && api.prevSum('row', '2026-09-08').v > 0,
+  'a first-ever exercise is not a PR by construction: the rule needs a previous best to beat');
+api.recountSession(tprC);
+ok(tprC.prCount === 1, 'recountSession derives the same count the badge does (one rule)');
+const taggedIn = html => html.split('<table class="htable">').slice(1)
+  .map(t => t.slice(0, t.indexOf('</th>') + 5)).filter(t => t.includes('prtag'));
+advance(1000); api.G.openHist('tprb');
+let hpr = views.hist();
+ok(/>\s*1 PR<\/span>/.test(hpr), 'the collapsed meta line reads 1 PR, derived not stored');
+ok(taggedIn(hpr).length === 1 && taggedIn(hpr)[0].includes(api.EXBY.bench.n),
+  'the expanded view badges exactly the PR exercise, on its name');
+ok(taggedIn(hpr)[0].includes('beat ') && taggedIn(hpr)[0].includes('+60'),
+  'the badge names what it beat and by how much (60 kg over Day A)');
+advance(1000); api.G.openHist('tprc');
+hpr = views.hist();
+const cTag = taggedIn(hpr);
+ok(cTag.length === 1 && cTag[0].includes(api.EXBY.row.n) && !cTag[0].includes(api.EXBY.bench.n),
+  'the badge sits on the rows table — the bench that only matched its best gets none');
+advance(1000); api.G.openHist('tpra');
+hpr = views.hist();
+ok(!hpr.includes('prtag'), 'a session with no PR shows no badge (the other cards\' meta counts are theirs, not its claim)');
+advance(1000); api.G.openHist('tprd');
+hpr = views.hist();
+ok(/>\s*1 PR<\/span>/.test(hpr) && taggedIn(hpr).length === 1,
+  'a stale stored count (0) cannot hide a PR — the derived reading wins, which is every old record');
+live().hist = [];
 
 /* ---------- 29. BACKWARD SAFETY · a pre-upgrade log still boots and behaves ---------- */
 sect('MIGRATION · a log written before every one of these features still works');

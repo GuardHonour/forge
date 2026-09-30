@@ -192,6 +192,15 @@ is the bug this section exists to prevent:
   it, and `_coach_test.cjs` asserts the sheet prints the same number the audit uses.
 
 ## UI SURFACES ADDED
+- **PR attribution in History** — the saved record kept only a bare `prCount`, so "2 PR" could not
+  say which exercise earned it. `sessPrs(s)` derives the PR entries at render from the same rule
+  `recountSession` re-derives the count with (the entry's working volume beat the exercise's best
+  previous session — `prevSum` is strictly-before), and the History meta line, the expanded detail
+  and the heatmap headline all read it, so count and badges can never disagree; a stale stored
+  count cannot hide a PR either. The badge is a gold `PR` chip on the exercise name whose tooltip
+  names what was beaten and by how much — the same claim the live Train card's banner makes. A PR
+  here is the exercise's whole working-set volume against its previous best, so the badge sits on
+  the EXERCISE; no set is singled out, because the rule does not single one out.
 - **In-session auto-regulation** — completing a working set BELOW its rep floor (`adjustAfterSet`)
   retargets the remaining sets of that exercise so the volume still gets done: a near miss (one rep
   short) holds the load and drops the rep target to what was just achieved; a real miss also takes
