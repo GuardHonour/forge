@@ -74,7 +74,7 @@ const NAMES = ['G','S','EXS','EXBY','MUSCLES','MUSBY','TAGMAP','exMuscles','tagT
   'setRirOf','hasRir','entryRir','loggedRir','RIR_HARD','setHardW','setStats','setCount','repWord','rirHint','vSession',
   'sessionEditHTML','recountSession','modalOpen',
   'diagnose','vCoach','rxRows','avoided','confidence','adherence','acwr','balance','deloadCheck','rampCheck','readiness',
-  'weekStreak','streakTarget','project','seed','todayISO','addDays','mondayOf','fw','wl','dw','snapW','gridOf','stepLoad','isBw','isBwEx','scoreByReps','loadLbl','wCell','compactW','repLoad','allLifts','recentPRs','scoreOf','sessionLoad','loadTrend','e1Baseline','slopeXY','progIndex','nextDayName','latest','entryVol','vTrain','KINDS','setKind','kindOf','isWarm','countsVol','countsE1','volSets','e1Sets','warmCount','ROUTINES','parseBackup','adoptBackup','backupState','backupLine','hasPreImport','sortHist','recountSession','curEditSession','openSessionEdit','bwSorted','bwLatest','bwSeries','bwAt','logBw','bwTrend','svgBw','bwSection','U','muscleSets','SBD_NORMS','SBD_LIFTS','SBD_DECILES','IPF_CLASSES','stdSex','stdClass','stdRatio','stdBand','standardsSection','G',
+  'weekStreak','streakTarget','project','seed','todayISO','addDays','mondayOf','fw','wl','dw','snapW','gridOf','stepLoad','isBw','isBwEx','scoreByReps','loadLbl','wCell','compactW','repLoad','allLifts','recentPRs','scoreOf','sessionLoad','loadTrend','e1Baseline','slopeXY','progIndex','nextDayName','latest','entryVol','vTrain','KINDS','setKind','kindOf','isWarm','countsVol','countsE1','volSets','e1Sets','warmCount','ROUTINES','parseBackup','adoptBackup','backupState','backupLine','hasPreImport','sortHist','recountSession','curEditSession','openSessionEdit','bwSorted','bwLatest','bwSeries','bwAt','logBw','bwTrend','svgBw','bwSection','U','muscleSets','SBD_NORMS','SBD_LIFTS','SBD_DECILES','IPF_CLASSES','stdSex','stdClass','stdRatio','stdBand','standardsSection','G','adjustAfterSet',
   'vProg','heatCard','svgBars','weeklyVol','dFull','ago','loc','sessVol'];
 const ret = ';return{' + NAMES.map(n => n + ':(typeof ' + n + '!=="undefined"?' + n + ':null)').join(',')
   + ',sessRef:()=>sess,saveLS:()=>saveLS(),loadLS:()=>loadLS(),freshState:()=>freshState(),VIEWS:()=>VIEWS'
@@ -301,26 +301,56 @@ api.S.hist = puHist(0, 1);
 ok(api.nextLoad('pullup').w === 0, 'missing reps at bodyweight holds — there is nothing left to take off');
 ok(/bodyweight is the floor/i.test(api.nextLoad('pullup').why), 'and explains why it holds rather than adding weight');
 
-/* An assisted set is real work at a load the app cannot state: it does not model
-   what fraction of bodyweight each movement carries, so it claims no number. It
-   still counts as a SET, which is the currency volume is graded in. */
-ok(api.repLoad('pullup', -20) === 0, 'an assisted set contributes no tonnage');
-ok(api.e1(-20, 8, 0) === 0, 'an assisted set yields no 1RM estimate — and never a NEGATIVE one');
-ok(api.volSets([{ w: -20, r: 8 }]).length === 1, 'but it is still counted as a set');
-ok(api.entryVol({ id: 'pullup', sets: [{ w: -20, r: 8 }, { w: 0, r: 8 }] }) === 0,
-  'a fully assisted exercise has zero tonnage, not negative tonnage');
+/* Tonnage counts the mass the set MOVED. A bodyweight lift moves the lifter's
+   own body — their logged number, not an invented coefficient: w=0 is the body,
+   w>0 stacks on it, w<0 is assistance taking away from it, floored at zero. The
+   old stance (the set counts, the tonnage is zero) was honest about the fraction
+   of bodyweight a pull-up puts through the lats and dishonest about the 107 kg
+   that undeniably moved. Progression for these lifts is unchanged: reps, not
+   tonnage — only volume changed. */
+const BW0 = api.prof().bw;
+api.S.bwLog = [{ date: '2026-09-01', kg: 100 }, { date: '2026-09-20', kg: 108 }];
+ok(api.bwAt('2026-09-10') === 100 && api.bwAt('2026-09-25') === 108,
+  'the bodyweight in effect is the log entry on or before the session date');
+ok(api.repLoad('pullup', 0, '2026-09-25') === 108,
+  'a bodyweight set now carries the lifter\'s own mass as tonnage — the reported bug');
+ok(api.repLoad('pullup', 0, '2026-09-10') === 100,
+  'a PAST session is priced at that day\'s bodyweight, not quietly re-priced at today\'s');
+ok(api.repLoad('pullup', 10, '2026-09-25') === 118,
+  'added weight stacks on top of the body');
+ok(api.repLoad('pullup', -20, '2026-09-25') === 88,
+  'assistance subtracts from the body: 108 kg moved, 20 supported');
+ok(api.repLoad('pullup', -200, '2026-09-25') === 0,
+  'and floors at zero — assistance cannot pull the mass out of the movement');
+ok(api.entryVol({ id: 'pullup', sets: [{ w: 0, r: 8 }, { w: 0, r: 8 }, { w: 0, r: 8 }] }, '2026-09-25') === 2592,
+  '3×8 pull-ups at 108 kg read as 2592 of volume — not zero');
+api.S.bwLog = []; api.prof().bw = null;
+ok(api.repLoad('pullup', 0, '2026-09-25') === 0,
+  'with no bodyweight on record a bw set still contributes zero — an unknown mass is not guessed');
+api.prof().bw = 82.5;
+ok(api.repLoad('pullup', 0, '2026-09-25') === 82.5,
+  'the profile\'s current bodyweight stands in when the log has nothing for that date');
+api.prof().bw = BW0; api.S.bwLog = [{ date: '2026-09-01', kg: 100 }, { date: '2026-09-20', kg: 108 }];
+ok(api.e1(-20, 8, 0) === 0, 'an assisted set still yields no 1RM estimate — and never a NEGATIVE one');
+ok(api.volSets([{ w: -20, r: 8 }]).length === 1, 'and it is still counted as a set');
 ok(api.repLoad('bench', 100) === 100 && api.e1(100, 5, 0) > 0,
   'a loaded lift is untouched by the clamp');
 
-/* No assist value may reach an AGGREGATE. Two raw `w*r` paths bypassed the
-   clamps and one of them is user-facing: the per-set delta chip compared
+/* No assist value may make an AGGREGATE negative. Two raw `w*r` paths bypassed
+   the clamps and one of them was user-facing: the per-set delta chip compared
    `st.w*st.r`, so an assisted set scored -160 against last session's bodyweight
-   set and announced a 160 kg drop. Every aggregate below is now checked on a
-   session made entirely of assisted and bodyweight sets. */
+   set and announced a 160 kg drop. Since bodyweight sets now carry the lifter's
+   own mass (see above), the aggregates are priced through the same clamped load:
+   body minus assistance, floored at zero — still never negative, in any unit,
+   at any recorded bodyweight. */
 api.S.hist = [{ id: 'agg', date: api.todayISO(), name: 'T', entries: [
   { id: 'pullup', sets: [{ w: -20, r: 6 }, { w: -20, r: 5 }, { w: 0, r: 4 }] }] }];
-ok(api.entryVol(api.S.hist[0].entries[0]) === 0, 'an assisted entry adds no tonnage, and never negative tonnage');
-ok(api.sessVol(api.S.hist[0]) === 0, 'so the session total is zero, not negative');
+const bwNow = api.bwAt(api.todayISO());
+const expAgg = api.repLoad('pullup', -20, api.todayISO()) * 11 + api.repLoad('pullup', 0, api.todayISO()) * 4;
+ok(expAgg >= 0, 'the clamped load is non-negative at any bodyweight (bw ' + bwNow + ' -> ' + expAgg + ')');
+ok(api.entryVol(api.S.hist[0].entries[0], api.todayISO()) === expAgg,
+  'an assisted entry is priced at body-minus-assist per set (' + expAgg + '), never negative');
+ok(api.sessVol(api.S.hist[0]) === expAgg, 'so the session total matches and is never negative');
 ok(api.weeklyVol(4).every(w => w.v >= 0), 'weekly volume is never negative');
 ok(api.weeklyVol(4).some(w => w.l === 'NOW'), 'the weekly series still reports the current week');
 const aggMv = api.muscleVolume(api.addDays(api.todayISO(), -7), api.todayISO());
@@ -331,11 +361,71 @@ ok(aggAcwr.acute >= 0 && aggAcwr.chronic >= 0 && (aggAcwr.ratio === null || aggA
   'ACWR stays non-negative (it is computed from set counts, not loads)');
 ok(api.balance().every(b => b.ratio === null || b.ratio >= 0),
   'muscle balance ratios stay non-negative');
-/* the per-set comparison must read two unstated loads as EVEN, not as a 160 kg fall */
+/* the per-set comparison prices both sets at moved mass. Assisted vs bodyweight
+   is a REAL tonnage drop now — the band removed real mass from the movement —
+   so the chip says so instead of calling different work EVEN. */
 const dchip = (w, r, pw, pr) => api.repLoad('pullup', w) * r - api.repLoad('pullup', pw) * pr;
-ok(dchip(-20, 8, 0, 8) === 0, 'an assisted set against a bodyweight set is EVEN on the delta chip, not -160');
-ok(dchip(-20, 8, -20, 10) === 0, 'two assisted sets of different reps are EVEN, having no comparable tonnage');
-ok(dchip(10, 8, 0, 8) > 0, 'but a set with real added weight still shows a real increase');
+ok(dchip(-20, 8, 0, 8) === -20 * 8, 'an assisted set against a bodyweight set shows the mass the assist removed (-160), not EVEN');
+ok(dchip(0, 8, 0, 8) === 0, 'two identical bodyweight sets are EVEN');
+ok(dchip(10, 8, 0, 8) > 0, 'a set with real added weight still shows a real increase');
+
+/* ---------- 6e. IN-SESSION AUTO-REGULATION ---------- */
+sect('AUTO-REGULATE · a missed floor eases the REMAINING sets; the log is never rewritten');
+/* The prescription assumes the day went to plan. A working set below its rep
+   floor retargets the sets that have not happened yet: a near miss holds the
+   load and drops the rep target to what was just achieved, a real miss also
+   takes one grid step off the load. adjustAfterSet is the whole rule; the card
+   renders it from en.adj. */
+api.S.hist = []; api.S.bwLog = [];
+const benchEx = api.EXBY['bench'], bStart = api.nextLoad('bench').w, bInc = benchEx.def.inc;
+const mkRows = rows => ({ id: 'bench', sets: rows.map(r => ({ w: r[0], r: r[1], done: !!r[2], k: r[3] || null })) });
+
+let miss1 = mkRows([[bStart, 4, 1], [bStart, 8, 0], [bStart, 8, 0]]);
+ok(api.adjustAfterSet(miss1, benchEx, miss1.sets[0], 0) === true, 'a set one rep short of the floor adjusts');
+ok(miss1.adj.near === true && miss1.adj.w === bStart && miss1.adj.r === 4,
+  'a NEAR miss holds the load and retargets to the reps just achieved');
+ok(miss1.sets[1].w === bStart && miss1.sets[1].r === 4 && miss1.sets[2].r === 4,
+  'the remaining sets now aim at 4 reps at the same load');
+ok(miss1.sets[0].w === bStart && miss1.sets[0].r === 4 && miss1.sets[0].done === true,
+  'the completed set is never rewritten');
+
+let miss2 = mkRows([[bStart, 2, 1], [bStart, 8, 0], [bStart, 8, 0]]);
+ok(api.adjustAfterSet(miss2, benchEx, miss2.sets[0], 0) === true, 'a real miss also adjusts');
+ok(miss2.adj.near === false && miss2.adj.w === api.stepLoad(bStart, -1, benchEx),
+  'a REAL miss takes one grid step off the load');
+ok(miss2.sets[1].w === bStart - bInc && miss2.sets[1].r === 2,
+  'the remaining sets aim at 2 reps, one increment easier');
+
+let dialled = mkRows([[60, 1, 1], [bStart, 8, 0]]);
+ok(api.adjustAfterSet(dialled, benchEx, dialled.sets[0], 0) === false,
+  'a set dialled to the user\'s own load is their choice — no adjustment fires');
+
+let onFloor = mkRows([[bStart, benchEx.def.min, 1], [bStart, 8, 0]]);
+ok(api.adjustAfterSet(onFloor, benchEx, onFloor.sets[0], 0) === false,
+  'meeting the floor exactly is success — nothing adjusts');
+
+let wu = mkRows([[bStart, 1, 1, 'wu'], [bStart, 8, 0]]);
+ok(api.adjustAfterSet(wu, benchEx, wu.sets[0], 0) === false,
+  'a warm-up set never adjusts anything');
+
+let second = mkRows([[bStart, 2, 1], [bStart, 8, 0], [bStart, 8, 0]]);
+api.adjustAfterSet(second, benchEx, second.sets[0], 0);
+const w2 = second.adj.w;
+second.sets[1] = { w: w2, r: 1, done: true, k: null };   /* the lifter fails again at the eased target */
+ok(api.adjustAfterSet(second, benchEx, second.sets[1], 1) === true && second.sets[2].r === 1,
+  'a second miss re-fires against the ADJUSTED target and eases further');
+
+let puMiss = { id: 'pullup', sets: [{ w: 0, r: 1, done: true }, { w: 0, r: 8, done: false }] };
+ok(api.adjustAfterSet(puMiss, puEx, puMiss.sets[0], 0) === true && puMiss.sets[1].w === -puInc,
+  'a bodyweight lift that misses steps through zero into assistance, like its own progression');
+ok(puMiss.sets[1].r === 1, 'and the remaining set aims at the reps just achieved');
+
+let onlyDone = mkRows([[bStart, 2, 1], [bStart, 6, 1]]);
+api.adjustAfterSet(onlyDone, benchEx, onlyDone.sets[0], 0);
+ok(onlyDone.sets[1].r === 6 && onlyDone.sets[1].w === bStart,
+  'a set already completed before the miss is not retargeted');
+
+/* ---------- 6f. SCREEN LABELS (unchanged by the tonnage rule) ---------- */
 
 /* how the three states read on screen — "0 kg" for bodyweight is what made the
    pull-up look like a number the lifter had failed to enter */

@@ -839,7 +839,23 @@ const impCount=id=>(EXBY[id]&&EXBY[id].imp)||1;
    never be logged at bodyweight. Same movement, opposite grip, one usable half
    each. Both now take added AND assisted load, and 0 is bodyweight. */
 const isBwEx=ex=>!!(ex&&(ex.bw||ex.bwPlus));
-const repLoad=(id,w)=>Math.max(0,w)*impCount(id);
+/* The load a set actually MOVES. For external load that is just w. A bodyweight
+   lift moves the body: w=0 IS bodyweight, w>0 adds to it, w<0 is assistance
+   taking away from it, floored at zero because a band cannot pull the movement's
+   mass out entirely. The mass is the lifter's OWN logged bodyweight on the
+   session's date (bwAt: the bodyweight log, else the profile's current value) —
+   their number, not one the app invented, and historically accurate when the log
+   goes back further. This is why a 107 kg lifter's pull-up sets used to read as
+   zero volume: the strict no-estimate stance counted the SET but priced the work
+   at nothing, which is honest about the load we cannot state and dishonest about
+   the load we can. Progression for these lifts is unchanged — still scored on
+   reps (scoreByReps), e1 still floors at zero — only tonnage changed. `date` is
+   the session's date; omitted means today. */
+const repLoad=(id,w,date)=>{
+  const ex=EXBY[id];
+  if(ex&&isBwEx(ex)){const bw=bwAt(date||todayISO());if(bw>0)return Math.max(0,bw+w)*impCount(id);}
+  return Math.max(0,w)*impCount(id);
+};
 
 /* ================= SET KINDS =================
    Absent `k` means an ordinary working set — which is exactly what every
@@ -903,18 +919,17 @@ function setStats(en){
 }
 const setCount=en=>setStats(en).n;
 
-const entryVol=e=>volSets(e.sets).reduce((a,s)=>a+repLoad(e.id,s.w)*s.r,0);
-const sessVol=s=>s.entries.reduce((a,e)=>a+entryVol(e),0);
+const entryVol=(e,date)=>volSets(e.sets).reduce((a,s)=>a+repLoad(e.id,s.w,date)*s.r,0);
+const sessVol=s=>s.entries.reduce((a,e)=>a+entryVol(e,s.date),0);
 /* Epley. RIR folds into "effective reps" (a set of 8 at 2 RIR ~ a set of 10).
    Sets logged before RIR existed have no rir field, so their maths is unchanged.
    `w` is clamped at zero so an ASSISTED set (w<0) cannot produce a negative
    estimate. This is the single reason a negative load is safe anywhere: every
    tonnage path goes through repLoad() and every e1RM path through e1(), and both
-   floor at zero. An assisted set is real work at a load we cannot state — the
-   app does not model what fraction of bodyweight each movement carries, so
-   claiming a number would be inventing one. It still counts as a SET, which is
-   the currency the Coach's volume landmarks use; it contributes no tonnage and
-   no 1RM evidence, exactly as a bodyweight set already did. */
+   floor at zero. An assisted set counts its tonnage as bodyweight minus the
+   assistance, floored at zero (see repLoad) — the body is real mass even when
+   the band's exact unloading is not modelled — but it contributes no 1RM
+   evidence: an estimate built on a guessed effective load would be invented. */
 const e1=(w,r,rir)=>r>0?Math.max(0,w)*(1+(r+(rir||0))/30):0;
 const effReps=(r,rir)=>r+(rir||0);
 /* Estimate confidence. Above ~12 effective reps the formula diverges from any
@@ -968,7 +983,7 @@ function compactW(ex,w){
   if(isBwEx(ex))return w>0?('+'+fw(w)):w===0?'BW':(fw(-w)+'a');
   return fw(w);
 }
-function prevSum(exId,before){const L=lastOcc(exId,before);return L?{sd:L.sd,e:L.e,v:entryVol(L.e)}:null}
+function prevSum(exId,before){const L=lastOcc(exId,before);return L?{sd:L.sd,e:L.e,v:entryVol(L.e,L.sd)}:null}
 
 function suggest(exId){
   /* The plan-level "start" figure. Train and the Coach deliberately do NOT use
@@ -1118,7 +1133,7 @@ function muscleVolume(from,to){
     s.entries.forEach(en=>{
       const mx=exMuscles(en.id),st=setStats(en),n=st.n;
       if(!n)return;
-      const v=entryVol(en),vn=st.verified;
+      const v=entryVol(en,s.date),vn=st.verified;
       const touch=id=>{
         out[id].sets+=n;out[id].vol+=v;
         out[id].verified+=vn;out[id].unverified+=n-vn;
@@ -1181,7 +1196,7 @@ function exHistory(exId){
     out.push({date:s.date,sid:s.id,idx:s.id,
       e1:bw?sets.reduce((a,x)=>a+x.r,0):bestE1(en),
       top:top,reps:sets.reduce((a,x)=>a+x.r,0),sets:sets.length,
-      vol:entryVol(en),rir:entryRir(en),rirSets:loggedRir(en)});
+      vol:entryVol(en,s.date),rir:entryRir(en),rirSets:loggedRir(en)});
   });
   return out;
 }
@@ -3046,10 +3061,34 @@ function rirNote(nl){
   if(r===null)return '';
   return 'Hardest set last time: '+r+' in reserve. A single reading sits inside its own error, so reps decided this load — repeat the signal and it will move the weight.';
 }
+/* ================= IN-SESSION AUTO-REGULATION =================
+   The prescription assumes the day went to plan. When a working set lands BELOW
+   the rep floor it was aiming at, the remaining sets of that exercise retarget so
+   the volume still gets done: a near miss (one rep short) holds the load and
+   drops the rep target to what was just achieved; a real miss also takes one grid
+   step OFF the load (a bodyweight lift steps through zero into assistance, like
+   the engine's own progression). The logged set is never rewritten — this aims
+   the rows that have not happened yet, and the NEXT session's prescription reads
+   what was actually lifted, exactly as it always has. Fires only when the failed
+   set attempted the current target: a load the user dialled themselves is their
+   choice, not a miss the app should override. Re-fires against the adjusted
+   target, so a second miss eases further — and never rewrites the set the user
+   already did. */
+function adjustAfterSet(en,ex,st,k){
+  if(!countsVol(st))return false;                     /* working sets only */
+  const adj=en.adj,fromR=adj?adj.r:ex.def.min,fromW=adj?adj.w:nextLoad(en.id).w;
+  if(st.r>=fromR)return false;                        /* met the target — nothing to fix */
+  if(Math.abs(st.w-fromW)>stepKg(ex.def)+0.001)return false;   /* dialled their own load */
+  const near=(fromR-st.r)<=1;
+  const w2=near?fromW:(isBwEx(ex)?stepLoad(fromW,-1,ex):Math.max(stepLoad(fromW,-1,ex),stepKg(ex.def)));
+  en.adj={w:w2,r:st.r,at:k,fromW:fromW,fromR:fromR,near:near};
+  en.sets.forEach((s2,j)=>{if(j>k&&!s2.done&&countsVol(s2)){s2.w=w2;s2.r=st.r;}});
+  return true;
+}
 function vSession(){
   const secs=Math.round((Date.now()-sess.t0)/1000);
   /* volume counts working sets only; warm-ups are shown but never inflate it */
-  const dv=sess.entries.reduce((a,en)=>a+en.sets.filter(s=>s.done&&countsVol(s)).reduce((x,s)=>x+repLoad(en.id,s.w)*s.r,0),0);
+  const dv=sess.entries.reduce((a,en)=>a+en.sets.filter(s=>s.done&&countsVol(s)).reduce((x,s)=>x+repLoad(en.id,s.w,sess.date)*s.r,0),0);
   const dn=sess.entries.reduce((a,en)=>a+en.sets.filter(s=>s.done&&countsVol(s)).length,0);
   const dwu=sess.entries.reduce((a,en)=>a+warmCount(en.sets.filter(s=>s.done)),0);
   let h='<div class="sess-head"><div><div class="sess-name">'+esc(sess.name)+'</div><div class="sess-sub">Started '+new Date(sess.t0).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+'</div></div>'
@@ -3089,7 +3128,14 @@ function vSession(){
         else progLine=setsTxt+' — the same as last session\'s top set, so chase reps before more weight.';
       }
     }
-    const doneV=volSets(en.sets.filter(s=>s.done)).reduce((a,s)=>a+repLoad(en.id,s.w)*s.r,0);
+    /* An in-session adjustment (a set missed its floor) retargets the remaining
+       sets; the card must show the plan as it NOW is, with the engine's plan kept
+       as context — not two contradicting sentences on one card. */
+    const adj=en.adj;
+    if(adj)progLine='Set '+(adj.at+1)+' missed the '+adj.fromR+'-rep floor at '+loadLbl(ex,adj.fromW)
+      +' — remaining sets aim at <b>'+adj.r+' reps @ '+loadLbl(ex,adj.w)+'</b>'
+      +(adj.near?'. Same load, a target you just hit.':' — one step easier, so the volume still gets done.');
+    const doneV=volSets(en.sets.filter(s=>s.done)).reduce((a,s)=>a+repLoad(en.id,s.w,sess.date)*s.r,0);
     /* Last session's sets — a RECORD, and it must not read as a plan for today.
        Three bare numbers under the title did exactly that: a reader took
        "70×8 · 70×8 · 72.5×6" for today's sets and asked what the recommended
@@ -3113,28 +3159,28 @@ function vSession(){
        load the engine wants on the bar — with the reason, so the number is
        something you can disagree with rather than a black box. */
     h+='<div class="rxbar">'
-      +'<span class="rxpill rxtgt" title="Prescribed rep range for '+esc(ex.n)+'">'
-        +'<b>'+ex.def.s+'×'+ex.def.min+'–'+ex.def.max+'</b> '+repLower(ex)+'</span>'
+      +'<span class="rxpill rxtgt" title="'+(adj?'Adjusted after set '+(adj.at+1)+' missed the '+adj.fromR+'-rep floor':'Prescribed rep range for '+esc(ex.n))+'">'
+        +(adj?'<b>'+ex.def.s+'×'+adj.r+'</b>':'<b>'+ex.def.s+'×'+ex.def.min+'–'+ex.def.max+'</b>')+' '+repLower(ex)+'</span>'
       +(isBwEx(ex)
-        ?'<span class="rxpill rxnext" title="'+esc(nl.why||'')+'">Today <b>'+loadLbl(ex,nw)+'</b></span>'
-        :'<span class="rxpill rxnext" title="'+esc(nl.why||'')+'">Today <b>'+fw(nw)+'</b> '+wl()+(db?' ea':'')+'</span>')
+        ?'<span class="rxpill rxnext" title="'+esc(nl.why||'')+'">'+(adj?'Now':'Today')+' <b>'+loadLbl(ex,adj?adj.w:nw)+'</b></span>'
+        :'<span class="rxpill rxnext" title="'+esc(nl.why||'')+'">'+(adj?'Now':'Today')+' <b>'+fw(adj?adj.w:nw)+'</b> '+wl()+(db?' ea':'')+'</span>')
       +'</div>'
       /* the line that states, once, what today's load is and what it is measured
          against — before the reasoning, because the number comes first */
       +(progLine?'<div class="rxwhy rxprog">'+progLine+'</div>':'')
       +'<div class="rxwhy">'+esc(nl.note)+'</div>'
       +(rirNote(nl)?'<div class="rxwhy" style="color:var(--dim)">'+esc(rirNote(nl))+'</div>':'');
-    if(en._pr)h+='<div class="prbanner">VOLUME PR · beat '+dShort(pv.sd)+' by +'+comp(doneV-entryVol(pv.e))+' '+wl()+'</div>';
+    if(en._pr)h+='<div class="prbanner">VOLUME PR · beat '+dShort(pv.sd)+' by +'+comp(doneV-entryVol(pv.e,pv.sd))+' '+wl()+'</div>';
     en.sets.forEach((st,k)=>{
       /* the fourth column answers "how does this set compare?", and when there is
          nothing to compare yet it stays empty rather than drawing a placeholder
          chip that reads as a rendering artefact */
       let chip='';
       if(st.done){
-        if(pv&&pv.e.sets[k]){const cv=repLoad(en.id,st.w)*st.r,pvv=repLoad(en.id,pv.e.sets[k].w)*pv.e.sets[k].r,d=cv-pvv;
+        if(pv&&pv.e.sets[k]){const cv=repLoad(en.id,st.w,sess.date)*st.r,pvv=repLoad(en.id,pv.e.sets[k].w,pv.sd)*pv.e.sets[k].r,d=cv-pvv;
           chip=d>0?'<span class="deltachip up">+'+comp(d)+'</span>':d<0?'<span class="deltachip down">'+comp(d)+'</span>':'<span class="deltachip eq">EVEN</span>';}
         else chip='<span class="deltachip new">BEST</span>';
-      }else if(Math.abs(st.w-nw)>0.001){
+      }else if(Math.abs(st.w-(en.adj?en.adj.w:nw))>0.001){
         /* dialled away from the recommendation — say so where the weight lives,
            instead of only at the top of the card */
         chip='<span class="deltachip rec" title="Recommended '+loadLbl(ex,nw)+' · tap + or - to take it">REC<br>'+compactW(ex,nw)+'</span>';
@@ -3297,7 +3343,7 @@ function vHist(){
             +'<td>'+loadLbl(ex,st.w)+' × '+st.r+'</td>'
             /* the effort you logged per set, not one number for the exercise */
             +'<td class="num" style="color:var(--dim)">'+(rv===null?'–':rv)+'</td>'
-            +'<td class="num">'+(vg?loc(repLoad(en.id,st.w)*st.r):'<span style="color:var(--dim)">—</span>')+'</td></tr>'});
+            +'<td class="num">'+(vg?loc(repLoad(en.id,st.w,s.date)*st.r):'<span style="color:var(--dim)">—</span>')+'</td></tr>'});
         out+='</table>';
       });
       out+='<div style="display:flex;gap:8px;margin-top:10px">'
@@ -3411,7 +3457,7 @@ function vLib(){
     +gs.map(g=>'<button class="fchip'+((g===''?ui.libFilter==='':ui.libFilter===g)?' on':'')+'" onclick="G.libFilter(\''+g+'\')">'+(g||'All groups')+'</button>').join('')+'</div>'
   +list.map(e=>{
     const L=latest(e.id),be=bestEver(e.id);
-    const series=[];S.hist.forEach(s=>{const en=s.entries.find(x=>x.id===e.id);if(en)series.push(entryVol(en))});
+    const series=[];S.hist.forEach(s=>{const en=s.entries.find(x=>x.id===e.id);if(en)series.push(entryVol(en,s.date))});
     return '<div class="card" style="padding:0;margin-bottom:10px;display:flex;align-items:stretch">'
       +'<button class="libcard" style="flex:1" onclick="G.openExSheet(\''+e.id+'\')">'
       +'<span class="libicon">'+e.g.toUpperCase().slice(0,3)+'</span>'
@@ -3492,7 +3538,7 @@ function renderPickList(){
 }
 
 function openExSheet(id){
-  const e=EXBY[id],be=bestEver(id),series=[];S.hist.forEach(s=>{const en=s.entries.find(x=>x.id===id);if(en)series.push({d:s.date,v:entryVol(en)})});
+  const e=EXBY[id],be=bestEver(id),series=[];S.hist.forEach(s=>{const en=s.entries.find(x=>x.id===id);if(en)series.push({d:s.date,v:entryVol(en,s.date)})});
   const L=latest(id),prj=project(id);
   openModal('<div class="grab"></div><h2>'+e.n+'</h2><div class="shsub">'+e.eq+'</div>'
   +'<div class="animstage" id="anim-stage"></div>'
@@ -3552,11 +3598,11 @@ function finishFlow(){
   if(!dn){openModal('<div class="grab"></div><h2>Nothing logged</h2><div class="shsub">Zero sets completed. Call it?</div><div style="display:flex;gap:10px"><button class="btn btn-ghost" style="flex:1" onclick="G.closeModal()">Keep training</button><button class="btn btn-danger" style="flex:1" onclick="G.discard()">Discard</button></div>');return}
   const dur=Math.round((Date.now()-sess.t0)/1000);
   /* same definition of volume as the live bar and the coach: working sets only */
-  const tv=sess.entries.reduce((a,en)=>a+volSets(en.sets.filter(s=>s.done)).reduce((x,s)=>x+repLoad(en.id,s.w)*s.r,0),0);
+  const tv=sess.entries.reduce((a,en)=>a+volSets(en.sets.filter(s=>s.done)).reduce((x,s)=>x+repLoad(en.id,s.w,sess.date)*s.r,0),0);
   const dwarm=sess.entries.reduce((a,en)=>a+warmCount(en.sets.filter(s=>s.done)),0);
   const prs=[];
-  sess.entries.forEach(en=>{const pv=prevSum(en.id,todayISO());const v=volSets(en.sets.filter(s=>s.done)).reduce((x,s)=>x+repLoad(en.id,s.w)*s.r,0);
-    if(pv&&v>entryVol(pv.e))prs.push({n:EXBY[en.id].n,d:v-entryVol(pv.e)})});
+  sess.entries.forEach(en=>{const pv=prevSum(en.id,todayISO());const v=volSets(en.sets.filter(s=>s.done)).reduce((x,s)=>x+repLoad(en.id,s.w,sess.date)*s.r,0);
+    if(pv&&v>entryVol(pv.e,pv.sd))prs.push({n:EXBY[en.id].n,d:v-entryVol(pv.e,pv.sd)})});
   const prevSame=S.hist.slice().reverse().find(s=>sess.routineId&&s.routineId===sess.routineId);
   const dpct=prevSame?Math.round((tv/sessVol(prevSame)-1)*100):null;
   openModal('<div class="grab"></div><h2>Session complete.</h2><div class="shsub">'+esc(sess.name)+' · '+hhmm(dur)+'</div>'
@@ -3679,7 +3725,7 @@ function recountSession(s){
   let n=0;
   (s.entries||[]).forEach(en=>{
     const prev=prevSum(en.id,s.date);
-    if(prev&&prev.v>0&&entryVol(en)>prev.v)n++;
+    if(prev&&prev.v>0&&entryVol(en,s.date)>prev.v)n++;
     const r=entryRir(en);
     if(r!==null)en.rir=r;else delete en.rir;
   });
@@ -3689,7 +3735,7 @@ function recountSession(s){
 function sessionEditHTML(){
   const s=curEditSession();
   if(!s)return '<div class="grab"></div><h2>Session gone</h2>';
-  const total=s.entries.reduce((a,en)=>a+entryVol(en),0);
+  const total=s.entries.reduce((a,en)=>a+entryVol(en,s.date),0);
   const sets=n=>n===1?'':'s';
   let h='<div class="grab"></div><h2>Edit session</h2>'
    +'<div class="shsub">'+esc(s.name||'Session')+' · '+dShort(s.date)+' · '+comp(total)+' '+wl()+'</div>';
@@ -3700,7 +3746,7 @@ function sessionEditHTML(){
     const ex=EXBY[en.id]||{n:en.id,bw:false,inc:2.5};
     const wk=volSets(en.sets),wu=warmCount(en.sets);
     h+='<div class="ecard"><div class="ehead"><span class="ename">'+esc(ex.n)+'</span>'
-      +'<span class="evol">'+comp(entryVol(en))+' '+wl()+(wu?' · '+wu+' warm-up'+sets(wu):'')+'</span>'
+      +'<span class="evol">'+comp(entryVol(en,s.date))+' '+wl()+(wu?' · '+wu+' warm-up'+sets(wu):'')+'</span>'
       +'<button class="exdel" onclick="G.editDelEntry('+ei+')" aria-label="Remove '+esc(ex.n)+'">×</button></div>';
     en.sets.forEach((st,si)=>{
       const kd=kindOf(st);
@@ -4139,11 +4185,15 @@ const G={
     if(!isBwEx(ex)&&st.w<=0){toast('Add a load first');return}
     if(st.r<=0){toast('Log some reps');return}
     st.done=true;st.ts=Date.now();
+    /* a set that missed its rep floor eases the remaining sets of this exercise —
+       stated on the card and in a toast, never a silent rewrite of the log */
+    if(adjustAfterSet(en,ex,st,k))
+      toast('<b>Eased off</b> · remaining sets aim at '+en.adj.r+' reps @ '+loadLbl(ex,en.adj.w)+(en.adj.near?' — same load, a target you just hit.':' — one step easier, finish the volume.'),'hot');
     const pv=prevSum(en.id,todayISO());
     /* a warm-up can never be a volume PR — only working sets compete */
     if(pv&&!en._pr&&countsVol(st)){
-      const v=volSets(en.sets.filter(s=>s.done)).reduce((x,s)=>x+repLoad(en.id,s.w)*s.r,0);
-      if(v>entryVol(pv.e)&&entryVol(pv.e)>0){en._pr=true;boom();toast('<b>VOLUME PR</b> · '+ex.n+' · +'+comp(v-entryVol(pv.e))+' '+wl(),'hot')}
+      const v=volSets(en.sets.filter(s=>s.done)).reduce((x,s)=>x+repLoad(en.id,s.w,sess.date)*s.r,0);
+      if(v>entryVol(pv.e,pv.sd)&&entryVol(pv.e,pv.sd)>0){en._pr=true;boom();toast('<b>VOLUME PR</b> · '+ex.n+' · +'+comp(v-entryVol(pv.e,pv.sd))+' '+wl(),'hot')}
     }
     restStart(ex.def.rest,ex.n.toUpperCase());
     rerender();
@@ -4613,7 +4663,7 @@ saveSess();
 /* Auto cache-bust: if a newer build is deployed, this install picks it up on
    the next open. APP_BUILD must be bumped whenever index.html ships, otherwise
    a cached home-screen copy keeps running the old code. */
-const APP_BUILD='2026-09-30a';
+const APP_BUILD='2026-09-30b';
 try{
   const seen=localStorage.getItem('forge_build');
   if(seen && seen!==APP_BUILD){

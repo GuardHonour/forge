@@ -101,7 +101,8 @@ function boot(file, preload) {
     'sessionLoad', 'entryRir', 'setRirOf', 'hasRir', 'setStats', 'volSets', 'e1Sets', 'recountSession',
     'heatCard', 'vProg', 'vTrain', 'vCoach', 'vHist', 'vLib', 'vPlan', 'svgBars', 'dFull', 'ago', 'loc',
     'parseBackup', 'adoptBackup', 'nextLoad', 'todayISO', 'mondayOf', 'addDays', 'weekKeys',
-    'allLifts', 'e1', 'bestE1', 'entryVol', 'impCount', 'setW', 'setHardW', 'WSEC', 'scoreOf'];
+    'allLifts', 'e1', 'bestE1', 'entryVol', 'impCount', 'setW', 'setHardW', 'WSEC', 'scoreOf',
+    'exMuscles', 'repLoad', 'isBwEx'];
   const ret = ';return{' + NAMES.map(n => n + ':(typeof ' + n + '!=="undefined"?' + n + ':null)').join(',')
     + ',KEY:KEY,APP_BUILD:APP_BUILD,__S:()=>S,saveLS:()=>saveLS(),loadLS:()=>loadLS(),loadSess:()=>loadSess()};';
   const run = new Function('window', 'document', 'localStorage', 'navigator', 'location', 'URL', 'Blob',
@@ -219,15 +220,51 @@ const drift = field => Object.keys(OLD).filter(k => OLD[k][field] !== NEW[k][fie
   .map(k => k + ' ' + OLD[k][field] + '->' + NEW[k][field]);
 
 /* The volume contract, field by field, because a single blob fingerprint that fails tells you
-   nothing about WHICH number moved. */
-['sets', 'verified', 'unverified', 'vol', 'sess', 'last'].forEach(f => {
+   nothing about WHICH number moved. Since build 2026-09-30b one field shifts DELIBERATELY: a
+   bodyweight set now carries the lifter's own mass (repLoad — sets count the mass they moved:
+   body, plus added weight, minus assistance, floored at zero). The only shift any tonnage
+   series is allowed is exactly that rule, computed here from first principles on the identical
+   bytes: per working set, the two builds' repLoad difference, attributed to muscles by the same
+   primary/full and secondary/WSEC weights the audit itself uses. Sets, effort, PR scoring and
+   history bytes stay asserted byte-identical. */
+const perEntryDelta = (s, en) => R.volSets(en.sets)
+  .reduce((a, st) => a + st.r * (R.repLoad(en.id, st.w, s.date) - L2.repLoad(en.id, st.w, s.date)), 0);
+const expMuscle = {}, expWeek = {};
+loaded.hist.forEach(s => {
+  const wk = R.mondayOf(s.date);
+  s.entries.forEach(en => {
+    const d = perEntryDelta(s, en);
+    const mx = R.exMuscles(en.id);
+    mx.p.forEach(m => { expMuscle[m] = (expMuscle[m] || 0) + d; });
+    mx.s.forEach(m => { expMuscle[m] = (expMuscle[m] || 0) + d * R.WSEC; });
+    expWeek[wk] = (expWeek[wk] || 0) + d;
+  });
+});
+const bwSetsInHistory = R.volSets(loaded.hist.flatMap(s => s.entries).flatMap(e => e.sets)).length > 0
+  && loaded.hist.some(s => s.entries.some(en => R.isBwEx(R.EXBY[en.id])));
+ok(bwSetsInHistory, 'the store really contains bodyweight work, so the rule is actually exercised');
+
+['sets', 'verified', 'unverified', 'sess', 'last'].forEach(f => {
   const d = drift(f);
   ok(d.length === 0, 'muscle ' + f + ' unchanged' + (d.length ? ' — DRIFT: ' + d.join(', ') : '')
     + (f === 'sets' ? ' (total ' + tot('sets', NEW).toFixed(1) + ' hard sets)' : '')
     + (f === 'verified' ? ' (verified ' + tot('verified', NEW).toFixed(1) + ' / unverified ' + tot('unverified', NEW).toFixed(1) + ')' : ''));
 });
-ok(fp(R.muscleVolume('2000-01-01', '2100-01-01')) === legacyMeaning.muscle, 'the whole muscle-volume structure is identical');
-ok(fp(R.weeklyVol(10)) === legacyMeaning.weekly, 'weekly volume series identical (it feeds the chart that was fixed)');
+const volBad = Object.keys(NEW)
+  .map(k => ({ k, d: NEW[k].vol - OLD[k].vol, e: expMuscle[k] || 0 }))
+  .filter(x => Math.abs(x.d - x.e) > 0.1001);
+ok(volBad.length === 0, 'muscle vol shifted by EXACTLY the bodyweight-tonnage rule'
+  + (volBad.length ? ' — DRIFT: ' + volBad.map(x => x.k + ' ' + x.d.toFixed(1) + ' vs expected ' + x.e.toFixed(1)).join(', ') : ''));
+const structOk = Object.keys(NEW).every(k =>
+  NEW[k].sets === OLD[k].sets && NEW[k].verified === OLD[k].verified &&
+  NEW[k].unverified === OLD[k].unverified && NEW[k].sess === OLD[k].sess &&
+  NEW[k].last === OLD[k].last && Math.abs(NEW[k].vol - OLD[k].vol - (expMuscle[k] || 0)) <= 0.1001);
+ok(structOk, 'the whole muscle-volume structure is the legacy reading plus exactly the bodyweight rule');
+const WNEW = R.weeklyVol(10), WOLD = L2.weeklyVol(10);
+ok(WNEW.length === WOLD.length && WNEW.every((w, i) => w.full === WOLD[i].full),
+  'the weekly series still spans the same weeks');
+ok(WNEW.every((w, i) => Math.abs(w.v - WOLD[i].v - (expWeek[w.full] || 0)) <= 0.1001),
+  'weekly volume is the legacy series plus exactly the bodyweight-tonnage rule');
 ok(fp(R.recentPRs(365).map(x => x.date + ':' + x.id + ':' + x.score.toFixed(3)))
   === fp(L2.recentPRs(365).map(x => x.date + ':' + x.id + ':' + x.score.toFixed(3))),
   'the same PRs, on the same dates, at the same scores');
@@ -266,7 +303,12 @@ if (typeof R.nextLoad === 'function' && typeof L2.nextLoad === 'function') {
     + (moved.length ? ': ' + moved.join(', ') : ''));
 } else { console.log('  note: nextLoad not exposed in both builds — prescription drift not checkable'); }
 if (typeof R.sessVol === 'function' && typeof L2.sessVol === 'function') {
-  ok(fp(loaded.hist.map(s => R.sessVol(s))) === fp(legacyStore.hist.map(s => L2.sessVol(s))), 'per-session tonnage identical');
+  const sessBad = loaded.hist.map((s, i) => ({
+  i, d: R.sessVol(s) - L2.sessVol(legacyStore.hist[i]),
+  e: s.entries.reduce((a, en) => a + perEntryDelta(s, en), 0)
+})).filter(x => Math.abs(x.d - x.e) > 0.1001);
+ok(sessBad.length === 0, 'per-session tonnage is the legacy reading plus exactly the bodyweight rule'
+  + (sessBad.length ? ' — DRIFT at sessions ' + sessBad.slice(0, 5).map(x => x.i + ': ' + x.d.toFixed(1) + ' vs ' + x.e.toFixed(1)).join(', ') : ''));
 } else { console.log('  note: sessVol not exposed in both builds — tonnage compared through muscle volume instead'); }
 
 /* ---------- 4. THE RESIDUE IS KEPT, NOT REWRITTEN ---------- */

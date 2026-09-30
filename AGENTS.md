@@ -105,12 +105,18 @@ grid cannot express had no way in — and a lift whose load is not a weight at a
   **`w > 0` is ADDED weight, `w = 0` is BODYWEIGHT (a real, complete entry), `w < 0` is ASSISTANCE**
   (a band or an assist machine). One sign is the entire model, so progression is one comparison —
   a bigger `w` is harder — and `stepLoad` walks straight through zero.
-- **Assistance is real work at a load the app cannot state.** FORGE does not model what fraction of
-  bodyweight each movement carries, so claiming a number for an assisted set would be inventing one:
-  `repLoad` and `e1` clamp at zero, and an assisted set contributes no tonnage and no 1RM estimate.
-  It still counts as a **set**, which is the currency the Coach's volume landmarks are graded in —
-  hence `volSets` still returns it. This is why the clamps live in those two choke points rather than
-  in a display helper.
+- **Volume counts the mass the set MOVED (2026-09-30b).** `repLoad(id,w,date)` prices a bodyweight
+  set at the lifter's OWN bodyweight on the session's date (`bwAt`: the `bwLog` entry on or before
+  that date, else the profile's current value) — their number, not an invented coefficient: w=0 is
+  the body, w>0 stacks on it, w<0 is assistance removing from it, floored at zero. A 107 kg
+  lifter's 3×8 pull-ups used to read as zero volume, which was honest about the fraction of
+  bodyweight a pull-up puts through the lats and dishonest about the 107 kg that undeniably moved.
+  Every tonnage path still funnels through `repLoad`, and the session `date` is threaded through
+  `entryVol`/`sessVol`/`prevSum` so past sessions price at THAT day's bodyweight — never re-price
+  history at today's mass. Progression for these lifts is unchanged: `scoreByReps` and `e1`'s
+  zero-floor stay — volume changed, the engine did not. `_upgrade_test.cjs` asserts every
+  tonnage series shifted by EXACTLY this rule and nothing else; `_coach_test.cjs` holds the
+  signed-load arithmetic (108−20=88, floor at 0, unknown mass stays 0).
 - **The bodyweight progression is its own branch in `nextLoad`, not the weighted one.**
   ASSIST → BODYWEIGHT → ADDED, because assistance is a load you are trying to *remove*: topping the
   rep range at −20 kg prescribes −17.5, not +2.5. Topping it at 0 prescribes +`inc`. Missing the rep
@@ -186,6 +192,17 @@ is the bug this section exists to prevent:
   it, and `_coach_test.cjs` asserts the sheet prints the same number the audit uses.
 
 ## UI SURFACES ADDED
+- **In-session auto-regulation** — completing a working set BELOW its rep floor (`adjustAfterSet`)
+  retargets the remaining sets of that exercise so the volume still gets done: a near miss (one rep
+  short) holds the load and drops the rep target to what was just achieved; a real miss also takes
+  one grid step off the load (a bodyweight lift steps through zero into assistance, like its own
+  progression). It fires only when the failed set attempted the current target — a load the user
+  dialled themselves is their choice, not a miss to override — and re-fires against the adjusted
+  target, so a second miss eases further. The completed set is **never rewritten**; the card states
+  the miss and the new aim ("Set 2 missed the 6-rep floor at BW — remaining sets aim at 2 reps @
+  …") and the load pill flips Today→Now, because two contradicting sentences on one card is how a
+  prescription stops being one. The NEXT session's prescription still reads what was actually
+  lifted — the adjustment aims today's remaining rows, never the engine.
 - **Set kinds** — tap the `S1` badge on a Train set row to mark warm-up / drop / back-off / to-failure. `G.addWarmups(i)` inserts a marked ramp in one tap.
 - **Per-set effort (RIR)** — every set carries its own 0–5 "reps in reserve", logged from the Train card's effort strip (`G.rirMenu` → `G.setSetRir`) or one reading for all sets at once (`G.rirAllMenu` → `G.setRir`), and correctable later from the session editor (`G.editRirMenu`). The strip shows each set's reading and reports the **hardest** one; `entryRir(en)` (min across working sets) is what `nextLoad()` and the volume discount read. The card's reason line says what the last session's effort did to *today's* load (`rirNote`) — including the honest "nothing yet, one reading sits inside its own error" case — because today's weight is already on the bar and only a later session can respond to it.
 - **Granular removal** — `G.removeMenu(i)`: clear the warm-up ramp (`G.clearWarmups`), remove one set (`G.delSetAt`, guarded so the last set cannot be deleted), clear every set (`G.clearSets`), or remove the whole exercise (`G.removeEntry`, always behind a confirm that names the exercise and its set counts). A bare "Remove" next to "Warm-up ramp" used to delete the exercise, which is exactly the bug this replaces.
