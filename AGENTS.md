@@ -241,9 +241,12 @@ build, never for switching to: localStorage is per-origin, so pointing the phone
 EMPTY log, not the user's own.
 
 - **Two files deploy:** `index.html` and `sw.js`. Nothing else in the repo changes for a normal build
-  (manifest, icons, `install.html`, `latest.html` are static), and the app's own `sw.js` registration
-  is relative, so the repo-root layout is what Pages serves. Both build markers must be bumped together
-  (`APP_BUILD` and `sw.js`'s `BUILD`) — `_coach_test.cjs` fails if they drift.
+  (manifest, icons, `install.html`, `latest.html`, `fix-guide.html` are static), and the app's own
+  `sw.js` registration is relative, so the repo-root layout is what Pages serves. Both build markers
+  must be bumped together (`APP_BUILD` and `sw.js`'s `BUILD`) — `_coach_test.cjs` fails if they drift.
+  When the guide itself changes, upload it too — and remember the SW serves same-origin documents
+  under their own key since `2026-09-30d` (before that, every navigation was answered with the
+  cached app shell, so a corrected guide could never reach a phone with the worker installed).
 - **How the update reaches an installed copy:** the document is served STALE-WHILE-REVALIDATE
   (cached copy renders instantly; a background refresh stocks the cache for the NEXT open), with
   one carve-out: navigations carrying `?fresh=` are NETWORK-FIRST, because the self-heal depends on
@@ -251,13 +254,16 @@ EMPTY log, not the user's own.
   notices on the open it lands on, wipes the SW + caches and reloads with `?fresh=1` — fresh bytes,
   no loop. In the worst case an update costs one extra open; no user action beyond reopening.
   No user action beyond reopening the app.
-- **A `git push` from this workspace does NOT work unattended.** `credential.helper=helper-selector`
-  (from the hermes gitconfig) blocks waiting for an interactive selection, and with the helper
-  disabled git reports `could not read Username for 'https://github.com'` because
-  `GIT_TERMINAL_PROMPT` is off and no askpass/`gh`/stored credential exists. The two commits before
-  `98c8ca9` are both `Add files via upload` — the GitHub web UI. So a deploy is either the user
-  running `git push origin main` from an interactive shell, or dragging `index.html` + `sw.js` into
-  the repo's upload page.
+- **A `git push` DOES work unattended since the SSH key was set up (verified 2026-09-30).** The push
+  URL is `git@github.com:GuardHonour/forge.git` and the box holds a usable key; run it with
+  `GIT_SSH_COMMAND='ssh -o BatchMode=yes'` so a missing key fails fast instead of prompting, and
+  `GIT_TERMINAL_PROMPT=0`. `credential.helper=helper-selector` still sits in the config, but the
+  HTTPS fetch URL (which additionally embeds a PAT — never echo it into chat or logs) is not what
+  push uses. Before assuming the laptop-upload route, try the push. The two commits before `98c8ca9`
+  are both `Add files via upload` — the era when this note was true. Fallbacks remain: the user
+  running `git push origin main` from an interactive shell, or dragging the deploy files into the
+  repo's upload page (`_pack_for_upload.cjs` stages all three: `index.html`, `sw.js`,
+  `fix-guide.html`).
 - **If the web-UI route is used, this clone diverges** (the uploaded commit has the same content but a
   different hash). Realign with `git fetch origin && git reset --soft origin/main` — **`--soft`, never
   `--hard`**: the working tree routinely carries another agent's uncommitted work, and `--hard` would
