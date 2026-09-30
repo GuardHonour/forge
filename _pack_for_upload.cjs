@@ -3,9 +3,9 @@
  * The person deploying this works on a LAPTOP and the repo lives on the KILAM PC, so
  * "git push" is not available to them and the app's files are not reachable from where they
  * sit. What they do have is a browser that can reach this machine over the tailnet. So this
- * packages the two files that deploy — `index.html` and `sw.js` — as byte-identical downloads,
- * with a page that hands them over and the sha256 of each, and verifies over HTTP that what
- * the tailnet actually serves is those bytes and nothing else.
+ * packages the files that deploy — `index.html`, `sw.js` and `fix-guide.html` — as byte-identical
+ * downloads, with a page that hands them over and the sha256 of each, and verifies over HTTP that
+ * what the tailnet actually serves is those bytes and nothing else.
  *
  * WHY IT READS FROM GIT, NOT FROM DISK. `_publish_forge.cjs` publishes the WORKING TREE, which
  * is right for eyeballing a build in progress — but this workspace is edited concurrently, and a
@@ -23,7 +23,7 @@ const { execFileSync } = require('child_process');
 const DIST = 'C:\\Users\\Admin\\deepseek-harness\\apps\\web\\dist\\forge';
 const OUT = path.join(DIST, 'deploy');
 const LOCAL_PORT = 3080;
-const FILES = [['index.html', 'index.html.txt'], ['sw.js', 'sw.js.txt']];
+const FILES = [['index.html', 'index.html.txt'], ['sw.js', 'sw.js.txt'], ['fix-guide.html', 'fix-guide.html.txt']];
 
 const sha = b => crypto.createHash('sha256').update(b).digest('hex');
 const gitBytes = spec => { try { return execFileSync('git', ['show', spec], { maxBuffer: 64 * 1024 * 1024 }); } catch (e) { return null; } };
@@ -90,15 +90,15 @@ ol{padding-left:20px}li{margin-bottom:9px}
 .sha{font-family:ui-monospace,monospace;font-size:10.5px;color:#6f7681;word-break:break-all}
 </style>
 <h1>Deploy FORGE build <code>${appBuild}</code></h1>
-<p>Two files, byte-identical copies of the committed build on the KILAM PC, served over the tailnet
+<p>Byte-identical copies of the committed build on the KILAM PC, served over the tailnet
 so you can save them here on the laptop. Live site is currently <code>${liveBuild}</code>.</p>
 ${dirty ? `<div class="warn"><b>The working tree has uncommitted changes.</b> That is expected — this page ships the
 COMMITTED build <code>${head.split(' ')[0]}</code>, not what is on disk. Never upload a working tree that is mid-edit.</div>` : ''}
-<h2>1. Download both</h2>
+<h2>1. Download each</h2>
 ${packed.map(f => `<a class="btn" href="${f.asTxt}" data-src="${f.asTxt}" data-name="${f.name}">Save as <b>${f.name}</b><small>${f.bytes.toLocaleString()} bytes &middot; sha256 ${f.sha.slice(0, 24)}&hellip;</small></a>`).join('\n')}
 <p><b>These buttons download the file already named correctly.</b> They fetch the bytes and hand them
 to the browser as a <code>blob:</code> download, so the filename comes from this page and not from the
-URL. That matters: the files are <i>stored</i> as <code>index.html.txt</code> and <code>sw.js.txt</code>
+URL. That matters: the files are <i>stored</i> with a <code>.txt</code> suffix
 because <code>…/deploy/index.html</code> is this page — and a plain link, a right-click &rarr; <b>Save
 link as</b>, or pasting the raw URL all save it under the stored name, which uploads as
 <code>index.html.txt</code> and <b>replaces nothing</b>. That is exactly what happened on the first
@@ -116,11 +116,11 @@ document.querySelectorAll('a.btn').forEach(a => a.addEventListener('click', asyn
   } catch (err) { alert('download failed: ' + err.message + '\\nOpen ' + a.dataset.src + ' and rename it to ' + a.dataset.name); }
 }));
 </script>
-<h2>2. Upload both to GitHub</h2>
+<h2>2. Upload the files to GitHub</h2>
 <ol>
 <li>Open <code>github.com/GuardHonour/forge</code> &mdash; sign in if needed.</li>
 <li><b>Add file</b> &rarr; <b>Upload files</b> (or go straight to <code>github.com/GuardHonour/forge/upload/main</code>).</li>
-<li>Drag in <b>both</b> saved files. Same names, so they replace the old ones.</li>
+<li>Drag in <b>all</b> the saved files. Same names, so they replace the old ones.</li>
 <li>Commit straight to <code>main</code>.</li>
 </ol>
 <h2>3. Confirm</h2>
