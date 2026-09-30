@@ -81,12 +81,11 @@
   </div>
 
   <div class="card">
-    <h2><span class="num">4</span>Still stuck? Clear the site's stored data</h2>
-    <ol class="steps">
-      <li><b>Android / Chrome:</b> tap ⋮ → <b>ⓘ (Site info)</b> → <b>Cookies and site data / Clear &amp; reset</b> → confirm → reopen the link above.</li>
-      <li><b>iPhone / Safari:</b> Settings → <b>Safari</b> → <b>Advanced</b> → <b>Website Data</b> → find <b>github.io</b> → delete it → reopen the link.</li>
-    </ol>
-    <div class="why">This is the sure-fire fix. It wipes the old cached app entirely so FORGE installs brand-new.</div>
+    <h2><span class="num">4</span>Still stuck? Open the fresh link</h2>
+    <p>Open this link — it always comes straight from the internet:</p>
+    <div class="url" id="freshurl">https://guardhonour.github.io/forge/?fresh=1</div>
+    <a class="btn" id="freshbtn" href="https://guardhonour.github.io/forge/?fresh=1">Open the fresh build</a>
+    <div class="why">This link is fetched network-first, so it bypasses every cached copy on the phone without touching your saved data.</div>
   </div>
 
   <div class="card">
@@ -102,7 +101,18 @@
     <h2>Still not working?</h2>
     <p>Check your internet is on, and try a different browser (e.g. open in <b>Chrome</b> if you were on Safari).</p>
     <p>If FORGE loads in the browser but not the installed app — delete the home-screen icon and re-add it (step 5). That fixes it 99% of the time.</p>
-    <div class="note">RECOVERY TIP: your training logs live in the app's own storage on this phone and are not touched by any of these steps. Clearing the cache does <b>not</b> delete your data. If you ever want a backup, use the app's export button before doing anything.</div>
+    <div class="note">ABOUT YOUR DATA: clearing a <b>cache</b> never touches your training log — but <b>"Clear &amp; reset" / deleting Website Data does</b>, because the log lives in the site's storage on this phone. None of the steps above need it. If you ever must, do step 6 first.</div>
+  </div>
+
+  <div class="card">
+    <h2><span class="num">6</span>Last resort — export your backup FIRST</h2>
+    <p><span class="tag bad">Danger</span> Clearing the site's stored data erases your entire training log.</p>
+    <ol class="steps">
+      <li><b>Export first:</b> open FORGE → <b>Prog</b> tab → scroll to <b>Backup &amp; restore</b> → <b>Download backup</b>. Keep the .json file somewhere safe.</li>
+      <li><b>Only then clear:</b> Android: ⋮ → ⓘ → <b>Cookies and site data / Clear &amp; reset</b> · iPhone: Settings → Safari → Advanced → <b>Website Data</b> → github.io → delete.</li>
+      <li><b>Then restore:</b> reopen FORGE → <b>Prog</b> → <b>Backup &amp; restore</b> → import the file you saved.</li>
+    </ol>
+    <div class="why">Steps 1–5 already fix a stuck app. This card exists because "clear the site's data" is the advice the internet gives first — for FORGE it costs your whole history unless you export first.</div>
   </div>
 
   <div class="footer">FORGE · Training Log — your data stays on your device.</div>

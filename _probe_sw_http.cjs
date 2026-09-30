@@ -58,6 +58,10 @@ const COPY = ['manifest.json', 'icon-192.png', 'icon-512.png', 'icon-maskable-51
 fs.copyFileSync(SRC + '/index.html', SERVE + '/index.html');
 fs.copyFileSync(SRC + '/sw.js', SERVE + '/sw.js');
 for (const f of COPY) if (fs.existsSync(f)) fs.copyFileSync(f, SERVE + '/' + f);
+/* The guide page: the one document whose bytes were served as (and cached over) the app shell
+   by the old document branch — staged so the navigation below exercises the real file. */
+const GUIDE_SRC = fs.existsSync(SRC + '/fix-guide.html') ? SRC + '/fix-guide.html' : 'fix-guide.html';
+if (fs.existsSync(GUIDE_SRC)) fs.copyFileSync(GUIDE_SRC, SERVE + '/fix-guide.html');
 /* A page on the same origin that does NOT register a service worker, so an old
    cache can be seeded before the real SW ever activates. */
 fs.writeFileSync(SERVE + '/blank.html', '<!doctype html><meta charset="utf-8"><title>blank</title>ok');
@@ -170,6 +174,28 @@ let chrome;
     ok(!sw.keys.includes('forge-' + OLD_BUILD), 'the OLD cache was evicted on activate — this is what makes an update land');
     ok(sw.shellCached && sw.shellBuild === NEW_BUILD,
       'the cached shell is the new build (' + sw.shellBytes + ' bytes, APP_BUILD ' + sw.shellBuild + ')');
+
+    /* ---------- 3b. a non-shell document is served (and cached) as ITSELF ---------- */
+    if (fs.existsSync(SERVE + '/fix-guide.html')) {
+      await go(ORIGIN + '/fix-guide.html');
+      const doc = await evaluate(`(async function(){
+        var c = await caches.open('forge-${NEW_BUILD}');
+        var shell = await c.match('./index.html');
+        var shellDoc = shell ? await shell.text() : '';
+        var guide = await c.match(location.origin + '/fix-guide.html');
+        var guideDoc = guide ? await guide.text() : '';
+        return {isGuide: /isn.t loading/.test(document.body.innerHTML),
+          tabs: document.querySelectorAll('.navb').length,
+          guideCached: /isn.t loading/.test(guideDoc),
+          shellIsApp: shellDoc.indexOf("APP_BUILD='${NEW_BUILD}") > -1};
+      })()`);
+      ok(doc.isGuide, 'a navigation to fix-guide.html serves the FIX GUIDE (' + doc.tabs + ' nav buttons — the shell has 6)');
+      ok(doc.guideCached, 'and the guide is cached under its own key, not over the shell');
+      ok(doc.shellIsApp, 'the shell cache entry is still the APP — a guide visit did not poison ./index.html');
+      await go(ORIGIN + '/index.html'); /* back to the app for the sections below */
+    } else {
+      console.log('  SKIP: no fix-guide.html staged');
+    }
 
     /* ---------- 4. the new behaviour is in the SERVED bytes ---------- */
     const ui = await evaluate(`(function(){
