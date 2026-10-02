@@ -1,0 +1,21 @@
+FORGE · Training Log — UI upgrade directions (design only, no production code yet)
+
+VENTURE FACTS
+FORGE is a self-hosted, local-first weight-training log PWA used DURING gym sessions on a phone (installed to home screen). One hand, sweaty thumbs, between sets: the UI's job is rapid, glanceable logging. Current shipped identity: near-black background #0a0b0d, "volt" lime accent #cbf33a, Archivo (body) + Oswald (display) via Google Fonts, gold chips for PRs, six themes (volt / midnight / ember / royal / mint / paper). Structure is fixed and stays: bottom tab bar with exactly 6 tabs — Train, Coach, Hist, Prog, Lib, Plan — plus a circular rest-timer pill that floats above content between sets.
+
+TASK
+Present THREE distinct visual upgrade directions for this app's UI. For each direction give: a short name, a 3-sentence rationale, a :root design-token block written as CSS custom properties (surfaces bg/bg2/card/edge; text ink/mut/dim; accent/accent-hot/accent-deep; pr gold; danger; display and body font stacks from Google Fonts), and TWO phone-frame mockups at 390px width on dark:
+
+1. TRAIN (session logger): an exercise card containing — a prescription bar with a "Today" pill and the day's load (use "3×5–8 @ 102.5 kg"); one line stating the load applies to every working set and naming last session's number ("All 3 working sets at 102.5 kg — +2.5 on last session, whose top set was 100 kg"); a compact record row "LAST · 3 × 8 @ 100 kg"; then three set rows, each with a set-number badge, weight and reps steppers (− / value / +), and a complete checkmark; below the rows, a per-set effort strip of RIR 0–5 chips and a "+ Set" row. Show 2–3 such cards scrolling; the tab bar underneath with Train active; and the floating circular rest-timer pill with a progress ring and an mm:ss readout overlapping content just above the tab bar.
+2. PROG (progress): a headline row ("Last session Friday · 4 PR"), a consistency calendar — one column per week, Monday at the top, trained days filled with the accent, a ring on today, hollow squares for future days — above a weekly volume bar chart with an "AVG 44.4k" annotation placed in the chart's LEFT GUTTER (never behind bars) and value labels on the bars.
+
+DIRECTION CONSTRAINTS (hard)
+- Direction A must EVOLVE the installed identity: keep volt #cbf33a as the accent on near-black; refine surfaces, elevation, typography and component craft. This is the "continuity" option.
+- Directions B and C may propose a new accent personality. One may draw from FORGE's own "Limit Break" brand exploration (obsidian base #040407–#131318, forge crimson #FF2D3F as heat, aura violet #7B2CFF, premium gold #E9B949) — but tame it for a training tool: WCAG-legal on dark, calm by default, energy only in accents and PR moments, never a fight-game HUD.
+- WCAG AA on every text/background pair you show: ink ≥ 4.5:1, muted ≥ 4.5:1, dim ≥ 3:1 on their surfaces; accent-colored text ≥ 4.5:1 when it carries words that matter.
+- Touch targets ≥ 44px; dense but calm; one-hand reach; information clarity over decoration; no blur/glassmorphism; no gradient behind body text; hairline borders instead of heavy shadows.
+- Real copy only: use exactly the labels and numbers given above; do not invent marketing claims, feature names, or brand values.
+- Type: pick a display + body pairing from Google Fonts. Direction A may keep Oswald + Archivo; across B and C propose at most two other pairings — one with a strong athletic display character, one with an exceptionally legible numeric body face for set data.
+
+DELIVERABLE
+One self-contained HTML file named forge-ui-upgrade.html: all three directions stacked, each with its token block rendered as labeled swatches, its two mockups, and the rationale; finish with a one-line recommendation naming the direction to ship and why. No external JS libraries; Google Fonts links are allowed.

@@ -1,0 +1,21 @@
+FORGE · Training Log — UI upgrade, Direction C only: open personality (design only, no production code yet)
+
+VENTURE FACTS
+FORGE is a self-hosted, local-first weight-training log PWA used DURING gym sessions on a phone (installed to home screen). One hand, sweaty thumbs, between sets: the UI's job is rapid, glanceable logging. Current shipped identity: near-black background #0a0b0d, "volt" lime accent #cbf33a, Archivo (body) + Oswald (display) via Google Fonts, gold chips for PRs. Structure is fixed and stays: bottom tab bar with exactly 6 tabs — Train, Coach, Hist, Prog, Lib, Plan — plus a circular rest-timer pill that floats above content between sets.
+
+TASK
+Design ONE visual upgrade direction with a personality of your choosing, named however fits it. Two other directions already exist elsewhere — one keeps the current lime-on-black identity, one uses an obsidian-plus-crimson "tempered forge" material. This third direction must be genuinely DIFFERENT from both: do not keep lime as the primary accent and do not build on crimson/obsidian. You might consider, for example, a cool graphite-and-ice direction with a cold accent for the data-dense surfaces, a warm dark "ember" direction, or something else with a strong athletic character — but choose with conviction and keep it shippable: this is precision equipment for a lifter mid-set, dark-first, information-first.
+
+Deliver, in one self-contained HTML file named forge-ui-c-open.html:
+1. A :root design-token block as CSS custom properties: surfaces bg/bg2/card/edge; text ink/mut/dim; accent/accent-hot/accent-deep; pr-gold; danger; display and body font stacks from Google Fonts (a display face with strong athletic character, a body face with exceptionally legible numerals for set data).
+2. The token block rendered as labeled swatches with hex values visible.
+3. TWO phone-frame mockups at 390px width on dark:
+   - TRAIN (session logger): an exercise card containing — a prescription bar with a "Today" pill and the day's load ("3×5–8 @ 102.5 kg"); one line stating the load applies to every working set and naming last session's number ("All 3 working sets at 102.5 kg — +2.5 on last session, whose top set was 100 kg"); a compact record row "LAST · 3 × 8 @ 100 kg"; then three set rows, each with a set-number badge, weight and reps steppers (− / value / +), and a complete checkmark; below the rows, a per-set effort strip of RIR 0–5 chips and a "+ Set" row. Show 2–3 such cards scrolling; the tab bar underneath with Train active; and the floating circular rest-timer pill with a progress ring and an mm:ss readout overlapping content just above the tab bar.
+   - PROG (progress): a headline row ("Last session Friday · 4 PR"), a consistency calendar — one column per week, Monday at the top, trained days filled with the accent, a ring on today, hollow squares for future days — above a weekly volume bar chart with an "AVG 44.4k" annotation placed in the chart's LEFT GUTTER (never behind bars) and value labels on the bars.
+4. A 3-sentence rationale naming what personality this direction brings and why it suits a training log.
+
+CONSTRAINTS (hard)
+- WCAG AA on every text/background pair shown: ink ≥ 4.5:1, muted ≥ 4.5:1, dim ≥ 3:1 on their surfaces; accent-colored text ≥ 4.5:1 when it carries words that matter.
+- Touch targets ≥ 44px; dense but calm; one-hand reach; information clarity over decoration; no blur/glassmorphism; no gradient behind body text; hairline borders instead of heavy shadows.
+- Real copy only: use exactly the labels and numbers given above; invent nothing.
+- No external JS libraries; Google Fonts links allowed.

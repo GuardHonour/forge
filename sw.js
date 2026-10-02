@@ -32,7 +32,7 @@
  * BUILD must be bumped in step with APP_BUILD in index.html. Bumping it deletes every older cache
  * on activate, which is what makes an update actually land.
  */
-const BUILD = '2026-09-30d';
+const BUILD = '2026-10-03a';
 const CACHE = 'forge-' + BUILD;
 const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png',
   './icon-maskable-512.png', './favicon-96.png'];

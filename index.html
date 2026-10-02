@@ -20,15 +20,16 @@
      fetch on a bad route, with the PWA splash up the whole time. The media=print swap loads it at
      low priority and flips it after load; with display=swap the text first renders in the system
      stack, then upgrades. A hung font route now costs nothing but the typeface, never the boot. -->
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;500;600;700;800&family=Barlow:wght@400;600&family=Manrope:wght@400;700&family=Oswald:wght@500;600;700&family=Space+Grotesk:wght@500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet"></noscript>
 <style>
 :root{
-  --bg:#08090b; --bg2:#0a0b0d; --card:#14161a; --card2:#1a1d23; --card3:#20242b;
-  --line:#242830; --line2:#30353e;
-  --ink:#f2f4f7; --mut:#98a1ac; --dim:#5f6873;
+  --bg:#0a0b0d; --bg2:#101013; --card:#1b1b1f; --card2:#212227; --card3:#282a30;
+  --line:#333239; --line2:#40404a;
+  --ink:#efeff2; --mut:#acacb4; --dim:#96969f;
   --volt:#cbf33a; --volt2:#b4dc22; --on-volt:#12150a;
-  --hot:#ff6b4a; --gold:#ffc94a;
+  --hot:#f47b74; --gold:#f2c358;
+  --font-display:Oswald; --font-body:Archivo;
   --r:14px;
   /* The device's unusable edges, named once and read everywhere. The app ships
      viewport-fit=cover + apple-mobile-web-app-status-bar-style:black-translucent, so in a
@@ -45,7 +46,7 @@ html,body{height:100%}
 html{background:var(--bg);-webkit-text-size-adjust:100%;overscroll-behavior-y:none}
 body{
   background:var(--bg); color:var(--ink);
-  font-family:Archivo,system-ui,sans-serif; font-size:15px; line-height:1.45;
+  font-family:var(--font-body),system-ui,sans-serif; font-size:15px; line-height:1.45;
   -webkit-text-size-adjust:100%;
 }
 /* iOS Safari/standalone zooms the whole page when a control smaller than 16px takes focus, and
@@ -70,7 +71,7 @@ header{
 .logo{display:flex;align-items:center;gap:10px}
 .logomark{width:30px;height:30px;border-radius:8px;background:var(--volt);display:grid;place-items:center;flex:0 0 auto}
 .logomark svg{width:16px;height:16px;fill:var(--on-volt)}
-.wordmark{font-family:Oswald,system-ui,sans-serif;font-weight:700;font-size:19px;letter-spacing:.14em;line-height:1}
+.wordmark{font-family:var(--font-display),system-ui,sans-serif;font-weight:700;font-size:19px;letter-spacing:.14em;line-height:1}
 .tag{font-size:9.5px;letter-spacing:.22em;color:var(--dim);font-weight:600;margin-top:2px}
 .hspacer{flex:1}
 .streak-chip{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-weight:700;font-size:13px}
@@ -91,11 +92,11 @@ main{flex:1;padding:18px 16px 178px}
 
 .hero{padding:8px 0 20px}
 .hero-kicker{font-size:12px;letter-spacing:.2em;color:var(--volt);font-weight:700;text-transform:uppercase;margin-bottom:6px}
-.hero-big{font-family:Oswald,system-ui,sans-serif;font-weight:700;font-size:42px;line-height:1.02;letter-spacing:.01em;text-wrap:balance}
+.hero-big{font-family:var(--font-display),system-ui,sans-serif;font-weight:700;font-size:42px;line-height:1.02;letter-spacing:.01em;text-wrap:balance}
 .hero-sub{color:var(--mut);margin-top:8px;font-size:14px}
 .hero-sub b{color:var(--ink)}
 
-.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}
 .card + .card{margin-top:10px}
 .card.hover:hover{border-color:var(--line2);background:var(--card2)}
 
@@ -103,8 +104,8 @@ main{flex:1;padding:18px 16px 178px}
 .rt-main{display:block;width:100%;background:none;border:0;color:inherit;font:inherit;text-align:left;padding:16px;cursor:pointer}
 .rt-main:focus-visible{outline:2px solid var(--volt);outline-offset:-2px;border-radius:14px}
 .rt-top{display:flex;align-items:center;gap:12px}
-.rt-day{font-family:Oswald,system-ui,sans-serif;font-weight:600;font-size:15px;letter-spacing:.06em;width:74px;flex:0 0 auto}
-.rt-name{font-family:Oswald,system-ui,sans-serif;font-weight:600;font-size:22px;letter-spacing:.03em;line-height:1.1}
+.rt-day{font-family:var(--font-display),system-ui,sans-serif;font-weight:600;font-size:15px;letter-spacing:.06em;width:74px;flex:0 0 auto}
+.rt-name{font-family:var(--font-display),system-ui,sans-serif;font-weight:600;font-size:22px;letter-spacing:.03em;line-height:1.1}
 .rt-meta{font-size:12px;color:var(--dim);margin-top:3px;font-weight:500}
 .rt-go{margin-left:auto;width:34px;height:34px;border-radius:50%;background:var(--volt);color:var(--on-volt);display:grid;place-items:center;flex:0 0 auto;transition:transform .15s}
 .rt:hover .rt-go{transform:scale(1.08)}
@@ -129,21 +130,21 @@ main{flex:1;padding:18px 16px 178px}
 /* stats */
 .statrow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 12px}
-.stat .sv{font-family:Oswald,system-ui,sans-serif;font-weight:600;font-size:20px;letter-spacing:.02em;line-height:1.1}
+.stat .sv{font-family:var(--font-display),system-ui,sans-serif;font-weight:600;font-size:20px;letter-spacing:.02em;line-height:1.1;font-variant-numeric:tabular-nums}
 .stat .sl{font-size:10.5px;color:var(--dim);font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-top:3px}
 .stat .sd{font-size:11px;font-weight:700;margin-top:2px}
 .up{color:var(--volt)} .down{color:var(--hot)} .flat{color:var(--dim)}
 
 /* live session */
 .sess-head{display:flex;align-items:center;gap:12px;margin-bottom:14px}
-.sess-name{font-family:Oswald,system-ui,sans-serif;font-weight:600;font-size:24px;letter-spacing:.03em}
+.sess-name{font-family:var(--font-display),system-ui,sans-serif;font-weight:600;font-size:24px;letter-spacing:.03em}
 .sess-sub{font-size:12.5px;color:var(--dim);font-weight:500}
 .endbtn{margin-left:auto}
 .livebar{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:18px}
 
-.xcard{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:12px;overflow:hidden}
+.xcard{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:12px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}
 .xhead{display:flex;align-items:center;gap:12px;width:100%;text-align:left}
-.xnum{font-family:Oswald,system-ui,sans-serif;font-weight:600;font-size:13px;color:var(--dim);width:26px;height:26px;border:1px solid var(--line2);border-radius:8px;display:grid;place-items:center;flex:0 0 auto}
+.xnum{font-family:var(--font-display),system-ui,sans-serif;font-weight:600;font-size:13px;color:var(--dim);width:26px;height:26px;border:1px solid var(--line2);border-radius:8px;display:grid;place-items:center;flex:0 0 auto}
 .xtitle{font-weight:700;font-size:15.5px;line-height:1.2}
 .xsub{font-size:12px;color:var(--dim);margin-top:2px;font-weight:500}
 .xchev{margin-left:auto;color:var(--dim);flex:0 0 auto}
@@ -193,8 +194,8 @@ main{flex:1;padding:18px 16px 178px}
 .stepbtn{width:44px;height:100%;min-height:44px;display:grid;place-items:center;color:var(--dim);font-weight:800;font-size:18px;flex:0 0 auto;user-select:none;-webkit-user-select:none;touch-action:manipulation;-webkit-tap-highlight-color:transparent;cursor:pointer;background:none;border:0}
 .stepbtn:hover{color:var(--volt);background:rgba(255,255,255,.03)}
 .stepbtn:active{color:var(--volt);background:rgba(255,107,44,.15);border-radius:8px}
-.stepval{flex:1;min-width:0;text-align:center;font-family:Oswald,system-ui,sans-serif;font-weight:600;font-size:16.5px;letter-spacing:.02em;white-space:nowrap}
-.stepval small{font-size:10px;color:var(--dim);font-family:Archivo;font-weight:700;margin-left:1px}
+.stepval{flex:1;min-width:0;text-align:center;font-family:var(--font-display),system-ui,sans-serif;font-weight:600;font-size:16.5px;letter-spacing:.02em;white-space:nowrap;font-variant-numeric:tabular-nums}
+.stepval small{font-size:10px;color:var(--dim);font-family:var(--font-body);font-weight:700;margin-left:1px}
 .deltachip{font-size:11px;font-weight:800;text-align:center;border-radius:8px;padding:5px 2px;letter-spacing:.02em}
 .deltachip.up{color:var(--volt);background:color-mix(in srgb,var(--volt) 10%,transparent)}
 .deltachip.down{color:var(--hot);background:color-mix(in srgb,var(--hot) 10%,transparent)}
@@ -212,17 +213,17 @@ main{flex:1;padding:18px 16px 178px}
 .rxbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:10px}
 .rxpill{font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;border-radius:999px;padding:4px 9px;white-space:nowrap;border:1px solid var(--line2);background:var(--card2);color:var(--mut)}
 .rxtgt{color:var(--ink);border-color:color-mix(in srgb,var(--ink) 24%,transparent)}
-.rxtgt b{font-family:Oswald,system-ui,sans-serif;font-size:13.5px;font-weight:600;letter-spacing:.05em}
+.rxtgt b{font-family:var(--font-display),system-ui,sans-serif;font-size:13.5px;font-weight:600;letter-spacing:.05em;font-variant-numeric:tabular-nums}
 .rxnext{margin-left:auto;color:var(--volt);background:color-mix(in srgb,var(--volt) 10%,transparent);border-color:color-mix(in srgb,var(--volt) 32%,transparent)}
-.rxnext b{font-family:Oswald,system-ui,sans-serif;font-size:14px;font-weight:600;letter-spacing:.03em}
+.rxnext b{font-family:var(--font-display),system-ui,sans-serif;font-size:14px;font-weight:600;letter-spacing:.03em;font-variant-numeric:tabular-nums}
 .rxwhy{font-size:11.5px;color:var(--dim);line-height:1.45;margin-top:6px}
 /* The one line that answers "what goes on the bar today, and is it going up?" —
    above the reasoning and in the reading colour, because a prescription the user
    cannot find is not a prescription. This is the line that was missing: the card
    showed last session's per-set loads and a NEXT pill with nothing stating that
    the pill is today's single weight for every working set. */
-.rxprog{color:var(--mut);font-weight:600}
-.rxprog b{color:var(--volt);font-family:Oswald,system-ui,sans-serif;font-size:12.5px;font-weight:600}
+.rxprog{color:var(--mut);font-weight:600;font-variant-numeric:tabular-nums}
+.rxprog b{color:var(--volt);font-family:var(--font-display),system-ui,sans-serif;font-size:12.5px;font-weight:600}
 .rxprog .dn{color:var(--hot)}
 /* a set dialled away from the recommendation says so where the weight lives */
 .deltachip.rec{color:var(--volt);background:color-mix(in srgb,var(--volt) 8%,transparent);border:1px dashed color-mix(in srgb,var(--volt) 42%,transparent);font-size:9.5px;line-height:1.2;padding:4px 1px;letter-spacing:0}
@@ -263,7 +264,7 @@ main{flex:1;padding:18px 16px 178px}
 .hwl{font:600 8.5px Archivo;color:var(--dim);text-align:center;letter-spacing:.02em}
 .hwl.now{color:var(--volt);font-weight:800}
 .hsum{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-bottom:12px}
-.hbig{font-family:Oswald,system-ui,sans-serif;font-weight:600;font-size:18px;line-height:1.15}
+.hbig{font-family:var(--font-display),system-ui,sans-serif;font-weight:600;font-size:18px;line-height:1.15}
 .hsub{font-size:11.5px;color:var(--dim);font-weight:500;margin-top:2px}
 .hsum .hstat:last-child{text-align:right}
 .hlegend{display:flex;align-items:center;gap:5px;margin-top:10px;font-size:10.5px;color:var(--dim);font-weight:600}
@@ -285,11 +286,11 @@ main{flex:1;padding:18px 16px 178px}
 .histcard{padding:14px 16px}
 .hrow{display:flex;align-items:center;gap:12px;width:100%;text-align:left}
 .hdate{width:46px;flex:0 0 auto;text-align:center}
-.hd-dot{width:34px;height:34px;margin:0 auto;border-radius:10px;background:var(--card3);display:grid;place-items:center;font-family:Oswald,system-ui,sans-serif;font-weight:600;font-size:13px}
+.hd-dot{width:34px;height:34px;margin:0 auto;border-radius:10px;background:var(--card3);display:grid;place-items:center;font-family:var(--font-display),system-ui,sans-serif;font-weight:600;font-size:13px}
 .hname{font-weight:700;font-size:15px}
 .hmeta{font-size:12px;color:var(--dim);margin-top:2px;font-weight:500}
 .hvol{margin-left:auto;text-align:right;flex:0 0 auto}
-.hvol .hv{font-family:Oswald,system-ui,sans-serif;font-weight:600;font-size:17px}
+.hvol .hv{font-family:var(--font-display),system-ui,sans-serif;font-weight:600;font-size:17px}
 .hvol .hu{font-size:10.5px;color:var(--dim);font-weight:700}
 .hdetail{margin-top:12px;border-top:1px dashed var(--line);padding-top:11px}
 .htable{width:100%;border-collapse:collapse;font-size:12.5px}
@@ -302,7 +303,7 @@ main{flex:1;padding:18px 16px 178px}
 
 /* library */
 .libcard{display:flex;gap:13px;width:100%;text-align:left;padding:14px 15px;align-items:center}
-.libicon{width:42px;height:42px;border-radius:11px;background:var(--card3);display:grid;place-items:center;flex:0 0 auto;font-family:Oswald,system-ui,sans-serif;font-weight:600;font-size:12px;color:var(--volt);letter-spacing:.04em}
+.libicon{width:42px;height:42px;border-radius:11px;background:var(--card3);display:grid;place-items:center;flex:0 0 auto;font-family:var(--font-display),system-ui,sans-serif;font-weight:600;font-size:12px;color:var(--volt);letter-spacing:.04em}
 .libmid{flex:1;min-width:0}
 .libname{font-weight:700;font-size:14.5px;display:block;line-height:1.3;overflow-wrap:anywhere}
 .libmeta{font-size:11.5px;color:var(--dim);margin-top:2px;font-weight:500}
@@ -334,7 +335,7 @@ main{flex:1;padding:18px 16px 178px}
 /* plan */
 .planrule{display:flex;gap:11px;padding:11px 0;border-bottom:1px dashed var(--line)}
 .planrule:last-child{border-bottom:0}
-.pnum{font-family:Oswald,system-ui,sans-serif;font-weight:600;color:var(--volt);font-size:15px;width:22px;flex:0 0 auto}
+.pnum{font-family:var(--font-display),system-ui,sans-serif;font-weight:600;color:var(--volt);font-size:15px;width:22px;flex:0 0 auto}
 .planrule h4{font-size:13.5px;font-weight:700}
 .planrule p{font-size:12.5px;color:var(--mut);margin-top:2px}
 .plandex{display:flex;justify-content:space-between;font-size:12.5px;padding:8px 0;border-bottom:1px dashed var(--line);color:var(--mut)}
@@ -357,7 +358,7 @@ nav#nav{position:sticky;bottom:0;z-index:40;display:grid;grid-template-columns:r
 .pill-ring circle.bg{stroke:var(--card3)}
 .pill-ring circle.fg{stroke:var(--volt);transition:stroke-dashoffset .25s linear}
 .pill-ring.go circle.fg{stroke:var(--hot)}
-.pill-time{font-family:Oswald,system-ui,sans-serif;font-weight:600;font-size:21px;letter-spacing:.04em;font-variant-numeric:tabular-nums;min-width:64px}
+.pill-time{font-family:var(--font-display),system-ui,sans-serif;font-weight:600;font-size:21px;letter-spacing:.04em;font-variant-numeric:tabular-nums;min-width:64px}
 .pill-label{font-size:11px;color:var(--dim);font-weight:700;letter-spacing:.08em;text-transform:uppercase}
 .pill-btns{margin-left:auto;display:flex;gap:6px;pointer-events:auto}
 .pb{min-width:38px;height:34px;border-radius:9px;border:1px solid var(--line2);color:var(--mut);font-weight:700;font-size:12px;padding:0 10px}
@@ -372,7 +373,7 @@ nav#nav{position:sticky;bottom:0;z-index:40;display:grid;grid-template-columns:r
   background:var(--bg2);border:1px solid var(--line);border-bottom:0;border-radius:20px 20px 0 0;padding:10px 18px calc(22px + var(--sab));animation:sup .28s cubic-bezier(.2,.9,.3,1)}
 @keyframes sup{from{transform:translate(-50%,40px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
 .grab{width:38px;height:4px;border-radius:99px;background:var(--line2);margin:4px auto 14px}
-.sheet h2{font-family:Oswald,system-ui,sans-serif;font-weight:600;font-size:22px;letter-spacing:.03em;margin-bottom:4px}
+.sheet h2{font-family:var(--font-display),system-ui,sans-serif;font-weight:600;font-size:22px;letter-spacing:.03em;margin-bottom:4px}
 .sheet .shsub{font-size:13px;color:var(--mut);margin-bottom:14px}
 
 .pickrow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:11px 4px;border-bottom:1px solid var(--line)}
@@ -383,7 +384,7 @@ nav#nav{position:sticky;bottom:0;z-index:40;display:grid;grid-template-columns:r
 
 .sumgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}
 .bigstat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 12px}
-.bigstat .bv{font-family:Oswald,system-ui,sans-serif;font-weight:600;font-size:24px;line-height:1.05}
+.bigstat .bv{font-family:var(--font-display),system-ui,sans-serif;font-weight:600;font-size:24px;line-height:1.05;font-variant-numeric:tabular-nums}
 .bigstat .bl{font-size:10.5px;color:var(--dim);font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-top:4px}
 .bigstat .bd{font-size:11.5px;font-weight:700;margin-top:3px}
 .prline{display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px dashed var(--line);font-size:13px}
@@ -416,7 +417,7 @@ nav#nav{position:sticky;bottom:0;z-index:40;display:grid;grid-template-columns:r
 .voltrack{flex:1;height:9px;border-radius:6px;background:var(--card3);position:relative;overflow:hidden;min-width:40px}
 .volfill{position:absolute;left:0;top:0;bottom:0;border-radius:6px;background:var(--volt)}
 .volmark{position:absolute;top:0;bottom:0;width:2px;background:var(--ink);opacity:.5}
-.volsets{width:54px;text-align:right;font-family:Oswald,system-ui,sans-serif;font-weight:600;font-size:13px;flex:0 0 auto;font-variant-numeric:tabular-nums}
+.volsets{width:54px;text-align:right;font-family:var(--font-display),system-ui,sans-serif;font-weight:600;font-size:13px;flex:0 0 auto;font-variant-numeric:tabular-nums}
 .volsets small{font-size:9.5px;color:var(--dim);font-weight:700;margin-left:2px}
 .pillst{font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:3px 7px;border-radius:999px;border:1px solid var(--line2);color:var(--mut);flex:0 0 auto}
 .pillst.under{color:var(--hot);border-color:color-mix(in srgb,var(--hot) 45%,transparent)}
@@ -433,7 +434,7 @@ nav#nav{position:sticky;bottom:0;z-index:40;display:grid;grid-template-columns:r
 .rxrow{display:flex;align-items:baseline;gap:9px;padding:9px 0;border-bottom:1px dashed var(--line)}
 .rxrow:last-child{border:0}
 .rxrow .rxn{font-size:13px;font-weight:600;flex:1;min-width:0}
-.rxrow .rxw{font-family:Oswald,system-ui,sans-serif;font-weight:600;font-size:15px;font-variant-numeric:tabular-nums}
+.rxrow .rxw{font-family:var(--font-display),system-ui,sans-serif;font-weight:600;font-size:15px;font-variant-numeric:tabular-nums}
 .rxrow .rxr{font-size:11.5px;color:var(--dim);font-weight:600}
 .disc{font-size:11px;color:var(--dim);line-height:1.55;text-align:center;padding:4px 6px}
 /* ---- effort (RIR) capture: one optional tap per exercise ---- */
@@ -454,7 +455,7 @@ nav#nav{position:sticky;bottom:0;z-index:40;display:grid;grid-template-columns:r
 .rirall{font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:2px 8px;border-style:dashed}
 .rirhint{font-size:10px;color:var(--dim);margin-left:auto;text-align:right;line-height:1.3;flex:1 1 auto;min-width:86px}
 .riropts{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;margin-top:12px}
-.riropt{height:48px;border-radius:12px;border:1px solid var(--line2);background:var(--card2);color:var(--ink);font-family:Oswald,system-ui,sans-serif;font-size:18px;font-weight:600}
+.riropt{height:48px;border-radius:12px;border:1px solid var(--line2);background:var(--card2);color:var(--ink);font-family:var(--font-display),system-ui,sans-serif;font-size:18px;font-weight:600}
 .riropt.on{background:var(--volt);color:var(--on-volt);border-color:var(--volt)}
 .rirscale{display:flex;justify-content:space-between;font-size:10px;color:var(--dim);font-weight:600;margin-top:6px}
 .confchip{font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:3px 7px;border-radius:999px;border:1px solid var(--line2);color:var(--dim)}
@@ -3486,7 +3487,7 @@ function vPlan(){
   let days='';
   sp.days.forEach(d=>{
     const r=ROUTINES[d.rid];
-    days+='<div class="card" style="margin-bottom:10px"><div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px"><span style="font-family:Oswald,system-ui,sans-serif;font-weight:600;font-size:19px">'+d.label+'</span><span style="font-size:12px;color:var(--dim);font-weight:600">'+r.sub.toUpperCase()+'</span>'
+    days+='<div class="card" style="margin-bottom:10px"><div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px"><span style="font-family:var(--font-display),system-ui,sans-serif;font-weight:600;font-size:19px">'+d.label+'</span><span style="font-size:12px;color:var(--dim);font-weight:600">'+r.sub.toUpperCase()+'</span>'
     +'<button class="linklike" style="margin-left:auto;font-size:11.5px" onclick="G.openDayEdit(\''+d.rid+'\')">customize</button></div>'
     +r.ex.map(px=>{const ex=EXBY[px.id],sg=suggest(px.id);
       return'<div class="plandex"><span>'+ex.n+'</span><b>'+ex.def.s+'×'+ex.def.min+'-'+ex.def.max+(isBwEx(ex)?' · '+loadLbl(ex,sg.w):' · start '+fw(sg.w)+(exDb(px.id)?' ea':''))+'</b></div>'}).join('')
@@ -4654,12 +4655,23 @@ function mkEntry(id,nOverride){
 
 /* ================= THEMES ================= */
 const THEMES={
- volt:{name:'Volt',vars:{bg:'#08090b',bg2:'#0a0b0d',card:'#14161a',card2:'#1a1d23',card3:'#20242b',line:'#242830',line2:'#30353e',ink:'#f2f4f7',mut:'#98a1ac',dim:'#878e96',volt:'#cbf33a',hot:'#ff6b4a',gold:'#ffc94a'}},
+ /* Voltline (A · OpenDesign UI upgrade 2026-10): the installed volt identity with the craft
+    raised — layered surfaces bg→bg2→card, 1px hairlines, brighter hairline tokens, and
+    every text tier still ≥4.5:1 on the WORST surface (card3). */
+ volt:{name:'Volt',vars:{bg:'#0a0b0d',bg2:'#101013',card:'#1b1b1f',card2:'#212227',card3:'#282a30',line:'#333239',line2:'#40404a',ink:'#efeff2',mut:'#acacb4',dim:'#96969f',volt:'#cbf33a',hot:'#f47b74',gold:'#f2c358'}},
  midnight:{name:'Midnight',vars:{bg:'#070b12',bg2:'#0a0f18',card:'#101825',card2:'#152031',card3:'#1b2940',line:'#1d2a3d',line2:'#2a3a52',ink:'#eef3fa',mut:'#93a4bb',dim:'#8592a3',volt:'#4da3ff',hot:'#ff6b6b',gold:'#ffd166'}},
  ember:{name:'Ember',vars:{bg:'#0c0908',bg2:'#100c0a',card:'#1a1310',card2:'#221813',card3:'#2c1e17',line:'#2b1f18',line2:'#3d2c21',ink:'#faf1ec',mut:'#b39c8f',dim:'#968780',volt:'#ff7a45',hot:'#ff4d4d',gold:'#ffc94a'}},
  royal:{name:'Royal',vars:{bg:'#0a0812',bg2:'#0d0b16',card:'#161224',card2:'#1d1830',card3:'#26203e',line:'#251f38',line2:'#342c4d',ink:'#f3effc',mut:'#a89cc4',dim:'#9088a5',volt:'#b18cff',hot:'#ff6b8f',gold:'#e8c26a'}},
  mint:{name:'Mint',vars:{bg:'#071010',bg2:'#091414',card:'#0f2020',card2:'#14292a',card3:'#1a3434',line:'#173030',line2:'#214444',ink:'#edf7f5',mut:'#93b3ae',dim:'#8a9e9b',volt:'#3ddc97',hot:'#ff6b6b',gold:'#ffd166'}},
  paper:{name:'Paper',vars:{bg:'#ecece5',bg2:'#f7f7f2',card:'#ffffff',card2:'#efefe8',card3:'#dedcd2',line:'#d8d6ca',line2:'#c2c0b2',ink:'#1a1b18',mut:'#565b53',dim:'#5c5f58',volt:'#1f7a43',hot:'#c94327',gold:'#9a7200'}},
+ /* Crucible (B): the venture's Limit Break material, tempered — obsidian base, forge
+    crimson #FF2D3F as heat in live moments, gold PRs, violet benched except states.
+    `on` pins DARK ink on crimson fills (white on crimson is 3.7:1 — fails AA;
+    #16090b on #FF2D3F is ~5.3:1). Anton display / Barlow body. */
+ crucible:{name:'Crucible',vars:{bg:'#08090d',bg2:'#0d0d11',card:'#15151c',card2:'#1b1b23',card3:'#22222b',line:'#2f2f3a',line2:'#3c3c49',ink:'#eff0f4',mut:'#aeaeb9',dim:'#8f8f9b',volt:'#ff2d3f',hot:'#e99565',gold:'#e9b949',on:'#16090b',fontd:'Anton',fontb:'Barlow'}},
+ /* Caliper (C): graphite precision instrument — ice-signal accent, champagne PRs,
+    Space Grotesk display / Manrope tabular body, sentence-case titles. */
+ caliper:{name:'Caliper',vars:{bg:'#0d0f12',bg2:'#15191b',card:'#1e2125',card2:'#25292e',card3:'#2d3237',line:'#353a40',line2:'#454b52',ink:'#edeef1',mut:'#a8adb3',dim:'#9aa0a8',volt:'#5dc5f2',hot:'#ed756e',gold:'#ebc77a',fontd:'Space Grotesk',fontb:'Manrope'}},
 };
 function hexRGB(h){h=h.replace('#','');return[parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)]}
 function shade(h,f){const c=hexRGB(h).map(v=>Math.max(0,Math.min(255,Math.round(v*f))));return'#'+c.map(v=>v.toString(16).padStart(2,'0')).join('')}
@@ -4671,7 +4683,14 @@ function applyTheme(){
   Object.entries(t.vars).forEach(([k,v])=>R.setProperty('--'+k,v));
   R.setProperty('--volt',acc);
   R.setProperty('--volt2',shade(acc,.85));
-  R.setProperty('--on-volt',bestOn(acc));
+  /* Ink that sits ON accent fills. Most accents are bright, so bestOn() picks dark ink;
+     Crucible's crimson is dark enough that white-on-crimson is only 3.7:1, so the theme
+     pins its own fill ink (a custom accent always falls back to bestOn). */
+  R.setProperty('--on-volt',(acc===t.vars.volt&&t.vars.on)?t.vars.on:bestOn(acc));
+  /* Per-theme type pairing (Voltline keeps Oswald/Archivo; Crucible Anton/Barlow;
+     Caliper Space Grotesk/Manrope). Unused families' woff2 files never download. */
+  R.setProperty('--font-display',"'"+(t.vars.fontd||'Oswald')+"'");
+  R.setProperty('--font-body',"'"+(t.vars.fontb||'Archivo')+"'");
   R.setProperty('--accent-a',shade(acc,1.12));
   R.setProperty('--accent-d',t.vars.dim);
 }
@@ -4683,7 +4702,7 @@ saveSess();
 /* Auto cache-bust: if a newer build is deployed, this install picks it up on
    the next open. APP_BUILD must be bumped whenever index.html ships, otherwise
    a cached home-screen copy keeps running the old code. */
-const APP_BUILD='2026-09-30d';
+const APP_BUILD='2026-10-03a';
 try{
   const seen=localStorage.getItem('forge_build');
   if(seen && seen!==APP_BUILD){
